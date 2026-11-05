@@ -37,6 +37,9 @@ _NUMBERED = (
 _LONG_NUMBERED = ("level", "lvl", "lev", "stufe", "niveau", "nivel", "livello")
 #: With more levels than this, the report summarizes them instead of listing.
 LIST_LEVELS_MAX = 8
+#: Up to this many levels, one filtered deck or a suspend per level follows
+#: the path. Past it, the learner has to reposition the whole deck.
+EASY_LEVELS_MAX = 6
 
 
 @dataclass
@@ -63,6 +66,28 @@ class LevelTags:
     @property
     def follows_default_order(self) -> bool:
         return self.out_of_order <= ALREADY_SORTED
+
+    @property
+    def easy_to_follow(self) -> bool:
+        """Whether a learner can follow the path with one filter or suspend."""
+        return len(self.levels) <= EASY_LEVELS_MAX
+
+    def how_to_follow(self) -> str:
+        """The steps a learner takes in Anki to study the deck in tag order."""
+        first, rest = self.levels[0], self.levels[1:]
+        if self.easy_to_follow:
+            higher = " or ".join(f"tag:{lvl}" for lvl in rest)
+            return (
+                f"create a filtered deck with the search tag:{first} and work up a "
+                f"level at a time, or suspend the higher levels ({higher}) and "
+                "unsuspend each in turn"
+            )
+        return (
+            f"reposition the whole deck, since with {len(self.levels)} levels "
+            "filtering level by level is impractical: in the browser, sort the "
+            "cards by the level (the Tags column, or a field holding the level set "
+            "as the sort field), select all, then Cards > Reposition"
+        )
 
     def describe(self) -> str:
         shown = self.levels

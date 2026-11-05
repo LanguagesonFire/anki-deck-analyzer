@@ -2,6 +2,14 @@
 
 Every report prints the analyzer version it was made with. Compare two decks only on reports from the same version: the changes below move scores or measurements.
 
+## 1.8.1
+
+The order a learner gets on opening the deck is the order that's scored.
+
+- A note with several cards is placed where its earliest new card comes up. Before, it took the position of whichever card the file listed first, so a deck whose reverse cards are scheduled apart from their forward cards was read in the wrong order. Decks whose sibling cards share a position, which is most of them, are unaffected.
+- Progression and vocabulary are scored on the default order again. A better study path by level tags can add at most 2 points when one filtered deck or a suspend follows it and the deck's description tells the learner to; otherwise at most 1, including every deck with more than six levels, which has to be repositioned to follow its tags. The steps to re-sort appear as something the learner can fix.
+- The deck's description is read from the file and shown to the judge. `--description` passes the text of the shared-deck page, where authors usually explain how to study the deck; the reproduce line says when one was given.
+
 ## 1.8.0
 
 Word lists and tagged decks are scored for how they're meant to be studied.

@@ -874,6 +874,43 @@ def test_measured_criteria_are_marked_in_both_views(deck_path):
 # --------------------------------------------------------------------------
 
 
+def test_a_note_is_placed_by_its_earliest_card(tmp_path):
+    """A reverse card scheduled before its forward sibling decides where the
+    note is first met, whatever order the database returns the cards in."""
+    path = str(tmp_path / "two-cards.apkg")
+    with tempfile.TemporaryDirectory() as workdir:
+        db = os.path.join(workdir, "collection.anki2")
+        con = sqlite3.connect(db)
+        con.executescript(SCHEMA_11)
+        con.execute(
+            "INSERT INTO col VALUES (1,0,0,0,11,0,0,0,'{}',?,?,'{}','')",
+            (json.dumps(MODEL), json.dumps({"1": {"id": 1, "name": "Default"}})),
+        )
+        n = len(SENTENCES)
+        for i, (it, en, _audio) in enumerate(SENTENCES, start=1):
+            con.execute(
+                "INSERT INTO notes VALUES (?,?,1,0,0,'',?,?,0,0,'')",
+                (i, f"g{i}", f"{it}\x1f{en}\x1f", it),
+            )
+            # Forward cards (lower ids, returned first) run in note order;
+            # reverse cards run backward and come up earlier for late notes.
+            con.execute(
+                "INSERT INTO cards VALUES (?,?,1,0,0,0,0,0,?,0,0,0,0,0,0,0,0,'')",
+                (i, i, n + i),
+            )
+            con.execute(
+                "INSERT INTO cards VALUES (?,?,1,1,0,0,0,0,?,0,0,0,0,0,0,0,0,'')",
+                (1000 + i, i, n - i),
+            )
+        con.commit()
+        con.close()
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.write(db, "collection.anki2")
+    deck = read_package(path)
+    assert [note.id for note in deck.notes[:3]] == [n, n - 1, n - 2]
+    assert deck.notes[0].position == 0
+
+
 def _apkg_with_due(path: str, due_for: "callable") -> None:
     """The fixture deck, with the new-card position under the test's control."""
     with tempfile.TemporaryDirectory() as workdir:
@@ -2221,3 +2258,65 @@ def test_sentence_quality_leaves_position_to_progression():
     rubric = criteria.BY_KEY["sentences"].rubric
     assert "do not score its position here" in rubric
     assert "5-6 problem" in rubric
+
+
+def test_the_tag_path_only_adds_to_the_default_order():
+    rubric = criteria.BY_KEY["progression"].rubric
+    assert "that is the order you score" in rubric
+    order = [3] * 30 + [1] * 10 + [4] * 10 + [2] * 10
+    deck = _simple_deck(_tagged_rows(order))
+    m = metrics.compute(deck, {1: 0})
+    tags, path = _study_path(deck, m, {1: 0})
+    assert tags.easy_to_follow
+    pack = build_pack(deck, m, DeckProfile(target_fields={1: 0}), tags=tags, path=path)
+    assert "by at most 2 points" in pack and "tag:d1" in pack
+    assert "Deck description: none in the file, and none supplied." in pack
+    given = build_pack(
+        deck, m, DeckProfile(target_fields={1: 0}), tags=tags, path=path,
+        description="Beginners: suspend d2-d4.",
+    )
+    assert "supplied by the person running the analysis: Beginners" in given
+
+
+def test_many_levels_allow_one_point_and_name_the_reposition():
+    order = [lvl for lvl in range(30, 0, -1) for _ in range(3)]
+    rows = [([_word(i)], [f"Level{lvl:03d}"]) for i, lvl in enumerate(order)]
+    deck = _simple_deck(rows)
+    m = metrics.compute(deck, {1: 0})
+    tags, path = _study_path(deck, m, {1: 0})
+    assert not tags.easy_to_follow
+    pack = build_pack(deck, m, DeckProfile(target_fields={1: 0}), tags=tags, path=path)
+    assert "by at most 1 point here" in pack
+    assert "Cards > Reposition" in pack
+
+
+def test_the_deck_description_is_read_from_the_file(tmp_path):
+    path = str(tmp_path / "desc.apkg")
+    with tempfile.TemporaryDirectory() as workdir:
+        db = os.path.join(workdir, "collection.anki2")
+        con = sqlite3.connect(db)
+        con.executescript(SCHEMA_11)
+        decks = {"1": {"id": 1, "name": "Default", "desc": ""},
+                 "2": {"id": 2, "name": "Italian", "desc": "Study <b>d1</b> first.<br>Then d2."}}
+        con.execute(
+            "INSERT INTO col VALUES (1,0,0,0,11,0,0,0,'{}',?,?,'{}','')",
+            (json.dumps(MODEL), json.dumps(decks)),
+        )
+        for i, (it, en, _a) in enumerate(SENTENCES, start=1):
+            con.execute("INSERT INTO notes VALUES (?,?,1,0,0,'',?,?,0,0,'')",
+                        (i, f"g{i}", f"{it}\x1f{en}\x1f", it))
+            con.execute("INSERT INTO cards VALUES (?,?,2,0,0,0,0,0,?,0,0,0,0,0,0,0,0,'')",
+                        (i, i, i))
+        con.commit()
+        con.close()
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.write(db, "collection.anki2")
+    assert read_package(path).description == "Study d1 first.\nThen d2."
+
+
+def test_a_description_reaches_the_reproduce_command():
+    from anki_deck_analyzer.analyze import Provenance
+
+    p = Provenance("1.8.1", "claude-sonnet-5-5", "medium", 1, 7, "x", [], True,
+                   description_given=True)
+    assert "--description" in p.command()

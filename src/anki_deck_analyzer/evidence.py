@@ -372,6 +372,27 @@ def _explanation_lines(metrics: Metrics) -> list[str]:
     return lines
 
 
+DESCRIPTION_CHAR_LIMIT = 2000
+
+
+def _description_line(deck: Deck, given: str = "") -> str:
+    """What the author tells the learner about the deck, and where it came from."""
+    parts = []
+    if deck.description:
+        parts.append(
+            "Deck description, from the file: "
+            + tx.truncate(deck.description, DESCRIPTION_CHAR_LIMIT)
+        )
+    if given:
+        parts.append(
+            "Description from the shared-deck page, supplied by the person running "
+            "the analysis: " + tx.truncate(given, DESCRIPTION_CHAR_LIMIT)
+        )
+    if not parts:
+        return "Deck description: none in the file, and none supplied."
+    return "\n".join(parts)
+
+
 #: Notes shown from the start of the level-tag study path.
 PATH_OPENING = 20
 
@@ -385,13 +406,26 @@ def _study_path_text(tags: levels.LevelTags, path: levels.StudyPath | None) -> s
         )
         return "\n".join(lines)
     m = path.metrics
+    credit = 2 if tags.easy_to_follow else 1
     lines += [
-        "Many decks tagged this way are meant to be studied level by level: the "
-        "learner suspends or filters the higher levels and works up. Below is the "
-        "deck measured in that order, lowest level first and the default order "
-        "within each level, with the same fields and the same word counting as "
-        "above. Judge which path the deck's own tags and identification notes "
-        "support, score progression on that path, and say which one you scored.",
+        "Below is the deck measured lowest level first, the default order within "
+        "each level, with the same fields and the same word counting as above.",
+        "",
+        "A learner who opens the deck studies it in the default order, so score "
+        "progression and vocabulary on the default order. The tag path can only "
+        f"raise those scores, by at most {credit} point{'s' if credit > 1 else ''} "
+        "here, and only by as much as it is better. "
+        + (
+            "Up to 2 points needs a deck description (see The deck, above) that "
+            "tells the learner to study by level; without one, at most 1. "
+            if tags.easy_to_follow
+            else "At most 1 point, because following the path means repositioning "
+            "the whole deck. "
+        )
+        + "Say which order you scored, how much the tag path added, and why.",
+        f"To follow the path, a learner would {tags.how_to_follow()}. That is "
+        "something a learner could fix themselves: list it under what can be "
+        "fixed, with those steps, when the tag path is clearly better.",
         "",
         m.format_line,
         "",
@@ -431,11 +465,13 @@ def build_pack(
     measured_fields: dict[int, int] | None = None,
     tags: levels.LevelTags | None = None,
     path: levels.StudyPath | None = None,
+    description: str = "",
 ) -> str:
     """The shared evidence block every criterion call reads.
 
     `tags` are level tags found on the notes; `path` is the deck measured in
-    their order, when the default order ignores them.
+    their order, when the default order ignores them. `description` is the
+    shared-deck page text, when the user supplied it.
     """
     picks = sample_indices(len(deck.notes))
     sampled = {i for idxs in picks.values() for i in idxs}
@@ -458,6 +494,7 @@ def build_pack(
     ]
     if profile.notes:
         overview.append(f"Identification notes: {profile.notes}")
+    overview.append(_description_line(deck, description))
     parts.append(_block("The deck", "\n".join(overview)))
 
     # -- structure --------------------------------------------------------

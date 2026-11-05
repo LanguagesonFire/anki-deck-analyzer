@@ -18,9 +18,11 @@ are needed and their numbers are stable in Anki's schema:
 from __future__ import annotations
 
 import hashlib
+import html as htmllib
 import io
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import zipfile
@@ -153,6 +155,10 @@ class Deck:
     order_basis: str = "creation order"
     #: Non-fatal problems encountered while reading.
     warnings: list[str] = field(default_factory=list)
+    #: The description the author gave the deck in Anki, as plain text. Shared
+    #: decks often say only "see the shared deck page"; the page itself is not
+    #: in the file.
+    description: str = ""
 
     def notetype_of(self, note: Note) -> NoteType | None:
         return self.notetypes.get(note.notetype_id)
@@ -296,6 +302,35 @@ def _deck_names(con: sqlite3.Connection, schema: int) -> dict[int, str]:
     return {}
 
 
+#: Longest deck description passed on.
+DESCRIPTION_LIMIT = 2000
+
+
+def _deck_descriptions(con: sqlite3.Connection, schema: int) -> dict[str, str]:
+    """Deck name -> its description, for collections that keep it as JSON.
+
+    Schema 18 stores it inside a protobuf blob, which is not read here.
+    """
+    try:
+        raw = con.execute("SELECT decks FROM col").fetchone()[0]
+        if not raw:
+            return {}
+        return {
+            v.get("name", "").replace(DECK_SEP, "::"): v.get("desc", "") or ""
+            for v in json.loads(raw).values()
+        }
+    except Exception:
+        return {}
+
+
+def _plain(html_text: str) -> str:
+    text = re.sub(r"<br\s*/?>|</p>|</div>|</li>", "\n", html_text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = htmllib.unescape(text)
+    lines = [" ".join(line.split()) for line in text.split("\n")]
+    return "\n".join(line for line in lines if line).strip()
+
+
 def read_package(path: str) -> Deck:
     """Read an .apkg or .colpkg file into a :class:`Deck`."""
     if not os.path.exists(path):
@@ -334,22 +369,30 @@ def read_package(path: str) -> Deck:
                     warnings.append(f"Could not read note types: {exc}")
 
             deck_names = _deck_names(con, schema)
+            descriptions = _deck_descriptions(con, schema)
 
             # Card-level data: study position and home deck, per note.
+            # A note with several cards is first met when its earliest new card
+            # comes up, so its position is the lowest `due` among them, not the
+            # `due` of whichever card the database happens to return first. A
+            # reverse card can be scheduled thousands of positions before its
+            # forward sibling.
             positions: dict[int, int] = {}
             note_deck: dict[int, str] = {}
             card_count = 0
             new_count = 0
             try:
                 for nid, did, ctype, due in con.execute(
-                    "SELECT nid, did, type, due FROM cards"
+                    "SELECT nid, did, type, due FROM cards ORDER BY id"
                 ):
                     card_count += 1
                     nid = int(nid)
                     if ctype == 0:
                         new_count += 1
-                        if nid not in positions:
-                            positions[nid] = int(due)
+                        due = int(due)
+                        if nid not in positions or due < positions[nid]:
+                            positions[nid] = due
+                            note_deck[nid] = deck_names.get(int(did), "")
                     if nid not in note_deck:
                         note_deck[nid] = deck_names.get(int(did), "")
             except sqlite3.Error as exc:
@@ -437,6 +480,12 @@ def read_package(path: str) -> Deck:
             )
 
     names = sorted({n.deck for n in notes if n.deck})
+    seen_desc: list[str] = []
+    for name in names:
+        text = _plain(descriptions.get(name, ""))
+        if text and text not in seen_desc:
+            seen_desc.append(text)
+    description = "\n\n".join(seen_desc)[:DESCRIPTION_LIMIT]
     top = _top_deck_name(names) or os.path.splitext(os.path.basename(path))[0]
 
     return Deck(
@@ -446,6 +495,7 @@ def read_package(path: str) -> Deck:
         notes=notes,
         notetypes=notetypes,
         deck_names=names,
+        description=description,
         card_count=card_count,
         new_card_count=new_count,
         media_names=media_names,

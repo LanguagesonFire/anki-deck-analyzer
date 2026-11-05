@@ -148,6 +148,7 @@ anki-deck-analyzer deck.apkg --dry-run
 | `--only KEYS` | judge only these criteria (`progression,accuracy`). The run is marked partial and its total can't be compared with a full run |
 | `--no-summary` | skip the closing verdict, saving one call |
 | `--frequency-list LIST` | measure vocabulary against another list: `wordfreq`, `wordfreq-raw`, `lexique`, a Lexique 3 `.tsv`, or a `.json` list of headwords in rank order (marked custom in the report) |
+| `--description TEXT` | the deck's description from its AnkiWeb page, or a path to a text file holding it. Pass it when the page says how to study the deck |
 | `--api-key KEY` | use this key instead of `ANTHROPIC_API_KEY` |
 | `--workers N` | how many criteria to judge at once (default 4); use 1 if you hit rate limits |
 | `-q` | no progress output |
@@ -174,7 +175,7 @@ Every report ends with the exact command that produced it, plus the analyzer ver
 ```
 To reproduce this score
   anki-deck-analyzer "deck.apkg"
-  analyzer 1.8.0 · sample seed 7 · words counted lemma:simplemma 1.2.0 · deck sha256 272314f187741604…
+  analyzer 1.8.1 · sample seed 7 · words counted lemma:simplemma 1.2.0 · deck sha256 272314f187741604…
 ```
 
 The sample is seeded, so the same deck always puts the same cards in front of the model. If the SHA-256 matches, you have the same file. Compare decks only on reports from the same analyzer version; [CHANGELOG.md](CHANGELOG.md) lists the changes that move scores.
@@ -213,7 +214,7 @@ A word list works differently, and it's measured differently. On a card that tea
 
 Decks that offer the same sentences in several recall directions (read it, hear it, produce it) are giving you a menu, not teaching the material three times, so the curve follows each piece of material the first time it appears. On a deck whose notes carry a headword and an example sentence, the curve reads the example, because progression is a property of the sentences you meet.
 
-**It reads the study path the author tagged.** Some decks are shipped in one order and meant to be studied in another: a word list tagged d1 to d4, say, whose description tells beginners to suspend everything above d1. When the notes carry level tags (d1–d4, CEFR A1–C2, JLPT N5–N1, HSK 1–6, beginner to advanced) and the default order ignores them, the deck is measured a second time, lowest level first, and both curves appear in the report. Progression is scored on the path the tags support, with a point off at most for the setup it takes.
+**It reads the study path the author tagged.** Some decks are shipped in one order and meant to be studied in another: a word list tagged d1 to d4, say, whose description tells beginners to suspend everything above d1. When the notes carry level tags (d1–d4, CEFR A1–C2, JLPT N5–N1, HSK 1–6, beginner to advanced) and the default order ignores them, the deck is measured a second time, lowest level first, and both curves appear in the report. Progression and vocabulary are still scored on the order you get when you open the deck, because that's what you'll study unless you know to change it. A better tag path can add at most 2 points when one filtered deck follows it and the deck's description says to, and at most 1 point otherwise. A deck with 169 frequency bands has to be repositioned in the browser before you can study it that way. The report lists re-sorting as something you can fix yourself, with the steps. The .apkg file rarely carries the author's instructions, which usually live on the shared-deck page; pass that text with `--description` and the judge reads it.
 
 Names are left out of the count: a word only ever written with a capital, and capitalized at least once mid-sentence, is a character or a place. Grammar and announcement cards are kept out too, so grammar terminology is never read as vocabulary, and English lines inside a target-language field, such as a dialogue's stage directions, are dropped. When a card states a word's dictionary form in its own field, that word counts as taught.
 

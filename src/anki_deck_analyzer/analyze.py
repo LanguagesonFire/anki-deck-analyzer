@@ -35,6 +35,9 @@ class Provenance:
     frequency_list: str = ""
     #: What --frequency-list was given, when it was not the default.
     frequency_option: str = ""
+    #: Whether a --description was supplied. Its text changes what the judge
+    #: reads, so the reproduce line says to pass it again.
+    description_given: bool = False
 
     def command(self, deck_name: str = "deck.apkg") -> str:
         base = f'anki-deck-analyzer "{deck_name}"'
@@ -49,6 +52,8 @@ class Provenance:
             parts.append("--only " + ",".join(self.criteria_judged))
         if self.frequency_option:
             parts.append(f'--frequency-list "{self.frequency_option}"')
+        if self.description_given:
+            parts.append('--description "<the same text>"')
         return " ".join(parts)
 
 
@@ -78,10 +83,12 @@ def analyze(
     only: set[str] | None = None,
     repeat: int = 1,
     frequency_list: str | None = None,
+    description: str = "",
 ) -> Analysis:
     """Read, measure, judge and score one deck.
 
     `progress` is called with a short status string at each step.
+    `description` is the shared-deck page text, which the file doesn't carry.
     """
 
     def say(message: str) -> None:
@@ -122,7 +129,9 @@ def analyze(
         lemma_fields=with_headwords(profile.lemma_fields, profile.target_fields, measured),
     )
 
-    pack = build_pack(deck, metrics, profile, measured, tags=tags, path=path)
+    pack = build_pack(
+        deck, metrics, profile, measured, tags=tags, path=path, description=description
+    )
 
     # Audio and images are measured, not judged; everything else goes to the model.
     judged = [c for c in CRITERIA if not c.measured]
@@ -163,6 +172,7 @@ def analyze(
         complete=complete,
         word_counting=metrics.lexicon.label,
         frequency_list=metrics.frequency.source,
+        description_given=bool(description),
         frequency_option=(
             os.path.basename(frequency_list)
             if frequency_list
@@ -210,6 +220,7 @@ def preview(
     explanation_types: list[str] | None = None,
     lemma_fields: dict[str, list[str]] | None = None,
     explanation_language: str = "English",
+    description: str = "",
 ) -> tuple[Deck, Metrics, str]:
     """Everything the tool can do without calling the API.
 
@@ -265,4 +276,6 @@ def preview(
         explanation_types=explain,
         lemma_fields=stated,
     )
-    return deck, metrics, build_pack(deck, metrics, profile, tags=tags, path=path)
+    return deck, metrics, build_pack(
+        deck, metrics, profile, tags=tags, path=path, description=description
+    )

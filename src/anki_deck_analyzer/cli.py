@@ -168,6 +168,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Any list but the default is named in the report and the reproduce line"
         ),
     )
+    p.add_argument(
+        "--description",
+        metavar="TEXT",
+        default="",
+        help=(
+            "the deck's description from its shared-deck page, or a path to a text "
+            "file holding it. The .apkg file usually carries none, and the page "
+            "is often where the author says how to study the deck"
+        ),
+    )
     p.add_argument("-q", "--quiet", action="store_true", help="no progress output")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
@@ -250,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
                     [n.strip() for n in (args.explanation_types or "").split(",") if n.strip()],
                     {k: v.split("|") for k, v in (_field_map(args.lemma_fields) or {}).items()},
                     explanation_language=args.explanation_language,
+                    description=_description(args.description),
                 )
             except (DeckReadError, ValueError) as exc:
                 print(f"error: {exc}", file=sys.stderr)
@@ -286,6 +297,7 @@ def main(argv: list[str] | None = None) -> int:
                 only=only,
                 repeat=max(1, args.repeat),
                 frequency_list=args.frequency_list,
+                description=_description(args.description),
             )
         except DeckReadError as exc:
             print(f"error: {os.path.basename(path)}: {exc}", file=sys.stderr)
@@ -482,3 +494,11 @@ def _client(api_key: str | None):
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+
+def _description(value: str) -> str:
+    """--description as given, or the contents of the file it names."""
+    if value and os.path.isfile(value):
+        with open(value, encoding="utf-8") as handle:
+            return handle.read().strip()
+    return (value or "").strip()
