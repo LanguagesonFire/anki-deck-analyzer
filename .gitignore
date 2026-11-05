@@ -1,0 +1,23 @@
+# Allowlist: everything in this folder is ignored except the files below,
+# so working files (reports, decks, notes) can never be committed by accident.
+/*
+!/src/
+!/tests/
+!/scripts/
+!/README.md
+!/CHANGELOG.md
+!/LICENSE
+!/pyproject.toml
+!/analyze-deck.bat
+!/analyze-deck.command
+!/.gitignore
+!/.gitattributes
+
+# Never wanted, wherever they appear
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# A maintainer copy of the shipped patches; the real ones are in src/
+/scripts/wordfreq_patches/

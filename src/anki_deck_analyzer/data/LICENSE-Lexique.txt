@@ -1,0 +1,22 @@
+lexique383_lemmas.json is derived from Lexique 3.83
+
+  New, B., Pallier, C., Brysbaert, M., & Ferrand, L. (2004). Lexique 2: A new
+  French lexical database. Behavior Research Methods, Instruments, &
+  Computers, 36(3), 516-524.
+  New, B., Pallier, C., Ferrand, L., & Matos, R. (2001). Une base de données
+  lexicales du français contemporain sur internet: LEXIQUE. L'Année
+  Psychologique, 101, 447-462.
+  http://www.lexique.org
+
+Lexique is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0):
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Changes made: only the lemme, ortho, freqfilms2 and freqlivres columns are
+used. Per lemma, freqfilms2 and freqlivres are each summed over its forms,
+and the lemmas are ranked by the mean of the two sums. The file holds each
+lemma, in that order, with the spellings Lexique gives for it; the
+frequencies themselves are not included.
+
+lexique383_lemmas.json is distributed under the same CC BY-SA 4.0 license.
+This license covers that file only; the Anki Deck Analyzer's code is MIT.

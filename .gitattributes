@@ -1,0 +1,5 @@
+* text=auto
+# cmd can misjump to a label in a batch file with LF endings; bash cannot read CR.
+*.bat text eol=crlf
+*.command text eol=lf
+*.json text eol=lf

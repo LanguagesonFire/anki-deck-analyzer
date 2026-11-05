@@ -1,0 +1,21 @@
+The wordfreq_patch_*.json files in this folder are derived from wordfreq
+
+  Robyn Speer. wordfreq: access a database of word frequencies, in various
+  natural languages. https://github.com/rspeer/wordfreq
+  (word lists of wordfreq 3.1.1)
+
+wordfreq's code is licensed under the Apache License 2.0; its word-frequency
+data is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0):
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Changes made: for each language, the top entries of wordfreq's list were
+checked against a Hunspell spelling dictionary. Each patch records, per
+entry, a decision: kept, merged into another spelling, set aside as a name,
+or dropped with a reason (foreign word, misspelling, abbreviation, junk).
+The patches hold words and decisions only; wordfreq's frequencies are not
+included, and applying a patch reads them from the user's own wordfreq
+installation.
+
+The patch files are distributed under the same CC BY-SA 4.0 license. This
+license covers those files only; the Anki Deck Analyzer's code is MIT.
