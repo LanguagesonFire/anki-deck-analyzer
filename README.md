@@ -4,7 +4,7 @@ Point it at an `.apkg` file and it tells you whether the deck is worth your revi
 
 There are thousands of shared decks on AnkiWeb and the quality varies enormously. Some are real courses. Others are a frequency list poured into flashcards, with sentences nobody would say and no grammar progression at all. You usually find out three weeks in.
 
-This tool reads the deck file, measures what can be measured, and has Claude read a structured sample of the cards. It scores the deck out of 100 against the nine criteria from [How to choose an Anki deck you'll actually use](https://languages-on-fire.com), weighted the way that article weights them.
+This tool reads the deck file, measures what can be measured, and has Claude read a structured sample of the cards. It scores the deck out of 100 against the nine criteria from [How to choose an Anki deck you'll actually use](https://languages-on-fire.com/how-to-choose-an-anki-deck/), weighted the way that article weights them.
 
 **You need your own Anthropic API key.** The deck is read on your computer, but the assessment is done by Claude, so there is an API call and it costs money: **$0.40 to $0.70 per deck**, billed by Anthropic to your account. Nothing is charged by this tool.
 
