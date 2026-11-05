@@ -1,7 +1,7 @@
 """The scoring framework.
 
 Weights and descriptions follow "How to choose an Anki deck you'll actually
-use" (Languages on Fire). Five non-negotiables carry 80% of the score because
+use" (Languages on Fire). Five fundamentals carry 80% of the score because
 they concern the learning material itself; the four nice-to-haves carry 20%
 because they improve the experience without rescuing weak fundamentals.
 """
@@ -27,7 +27,7 @@ class Criterion:
     measured: bool = False
 
 
-NON_NEGOTIABLE = "non-negotiable"
+FUNDAMENTAL = "fundamental"
 NICE_TO_HAVE = "nice-to-have"
 
 
@@ -36,7 +36,7 @@ CRITERIA: tuple[Criterion, ...] = (
         key="progression",
         title="Gradual progression and comprehensibility",
         weight=0.20,
-        group=NON_NEGOTIABLE,
+        group=FUNDAMENTAL,
         definition=(
             "New sentences should mostly consist of language the learner already "
             "understands, with a small amount of new material at a time — Krashen's "
@@ -66,7 +66,7 @@ CRITERIA: tuple[Criterion, ...] = (
         key="sentences",
         title="Sentence quality and usefulness",
         weight=0.20,
-        group=NON_NEGOTIABLE,
+        group=FUNDAMENTAL,
         definition=(
             "Sentences should be natural, level-appropriate, useful for understanding "
             "the target word or structure, and representative of how the language is "
@@ -93,7 +93,7 @@ CRITERIA: tuple[Criterion, ...] = (
         key="vocabulary",
         title="Vocabulary selection and frequency",
         weight=0.15,
-        group=NON_NEGOTIABLE,
+        group=FUNDAMENTAL,
         definition=(
             "High-frequency vocabulary gives more value early on, but frequency should "
             "not be followed mechanically: a pedagogically important word can deserve to "
@@ -124,7 +124,7 @@ CRITERIA: tuple[Criterion, ...] = (
         key="accuracy",
         title="Accuracy",
         weight=0.15,
-        group=NON_NEGOTIABLE,
+        group=FUNDAMENTAL,
         definition=(
             "Target-language sentences, translations, gender and plural information, "
             "conjugations and declensions, grammar explanations, spelling and "
@@ -146,7 +146,7 @@ CRITERIA: tuple[Criterion, ...] = (
         key="grammar",
         title="Grammar handling",
         weight=0.10,
-        group=NON_NEGOTIABLE,
+        group=FUNDAMENTAL,
         definition=(
             "As soon as a learner studies sentences they are learning grammar. New "
             "structures should build on ones already seen, and nearby sentences may "

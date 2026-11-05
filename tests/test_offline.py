@@ -299,7 +299,7 @@ def _judgements(score: int = 7) -> dict:
 def test_weights_sum_to_one():
     assert sum(c.weight for c in criteria.CRITERIA) == pytest.approx(1.0)
     non_neg = sum(
-        c.weight for c in criteria.CRITERIA if c.group == criteria.NON_NEGOTIABLE
+        c.weight for c in criteria.CRITERIA if c.group == criteria.FUNDAMENTAL
     )
     assert non_neg == pytest.approx(0.80)
 
@@ -311,7 +311,7 @@ def test_total_reflects_the_weighting(deck_path):
     assert result.grade in {g for _, g, _ in scoring.GRADES}
     assert 0 <= result.total <= 100
     # Every judged criterion scored 8, so the judged part must land on 80.
-    assert result.non_negotiable_total == pytest.approx(80.0)
+    assert result.fundamentals_total == pytest.approx(80.0)
 
 
 def test_a_failed_criterion_is_dropped_not_zeroed(deck_path):

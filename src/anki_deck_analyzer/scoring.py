@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .criteria import CRITERIA, EXTRA_FEATURES, Criterion, NON_NEGOTIABLE
+from .criteria import CRITERIA, EXTRA_FEATURES, Criterion, FUNDAMENTAL
 from .llm import Judgement
 from . import textutil as tx
 from .metrics import Metrics
@@ -60,7 +60,7 @@ class Result:
     total: float
     grade: str
     grade_note: str
-    non_negotiable_total: float
+    fundamentals_total: float
     nice_to_have_total: float
     unassessed: list[str] = field(default_factory=list)
     extras: list[tuple[str, bool, str]] = field(default_factory=list)
@@ -334,7 +334,7 @@ def combine(
         total=total,
         grade=grade,
         grade_note=note,
-        non_negotiable_total=group_total(NON_NEGOTIABLE),
+        fundamentals_total=group_total(FUNDAMENTAL),
         nice_to_have_total=group_total("nice-to-have"),
         unassessed=unassessed,
         extras=detect_extras(deck, metrics, profile),

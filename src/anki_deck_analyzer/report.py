@@ -11,7 +11,7 @@ from dataclasses import asdict
 from datetime import date
 
 from .apkg import Deck
-from .criteria import NON_NEGOTIABLE
+from .criteria import FUNDAMENTAL
 from .evidence import DeckProfile
 from . import frequency as fq
 from .metrics import Metrics, curve_table
@@ -118,8 +118,8 @@ def render_terminal(
     L.append("  " + s.dim(result.grade_note))
     L.append("")
 
-    L.append(s.bold("  The five non-negotiables") + s.dim("   (80% of the score)"))
-    for group, label in ((NON_NEGOTIABLE, None), ("nice-to-have", "  The four nice-to-haves")):
+    L.append(s.bold("  The five fundamentals") + s.dim("   (80% of the score)"))
+    for group, label in ((FUNDAMENTAL, None), ("nice-to-have", "  The four nice-to-haves")):
         if label:
             L.append("")
             L.append(s.bold(label) + s.dim("   (20% of the score)"))
@@ -291,7 +291,7 @@ def render_markdown(
     for sc in result.scores:
         value = f"{sc.score}/10" if sc.assessed else "not assessed"
         L.append(f"| {sc.criterion.title} | {sc.criterion.weight:.0%} | {value} |")
-    L += ["", f"Non-negotiables: {result.non_negotiable_total:.0f}/100. "
+    L += ["", f"Fundamentals: {result.fundamentals_total:.0f}/100. "
           f"Nice-to-haves: {result.nice_to_have_total:.0f}/100.", ""]
 
     if summary.get("verdict"):
@@ -519,12 +519,12 @@ def render_html(
         "</div>"
     )
 
-    parts.append("<h2>The five non-negotiables</h2>")
+    parts.append("<h2>The five fundamentals</h2>")
     parts.append(
         '<p class="note">80% of the score. These concern the learning material '
         "itself — the part that cannot be fixed without rewriting the deck.</p>"
     )
-    parts.append(_score_table(result, NON_NEGOTIABLE))
+    parts.append(_score_table(result, FUNDAMENTAL))
 
     parts.append("<h2>The four nice-to-haves</h2>")
     parts.append(
@@ -713,7 +713,7 @@ def render_json(
         "score": {
             "total": round(result.total, 1),
             "grade": result.grade,
-            "non_negotiables": round(result.non_negotiable_total, 1),
+            "fundamentals": round(result.fundamentals_total, 1),
             "nice_to_haves": round(result.nice_to_have_total, 1),
             "unassessed": result.unassessed,
         },

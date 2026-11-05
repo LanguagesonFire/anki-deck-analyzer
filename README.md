@@ -15,7 +15,7 @@ Italian · dialogue-based course · 4,029 notes · 5,110 cards
   81/100   Good
   Solid material with fixable gaps.
 
-  The five non-negotiables   (80% of the score)
+  The five fundamentals   (80% of the score)
      8/10 ████████░░  Gradual progression and comprehensibility (20%)
      8/10 ████████░░  Sentence quality and usefulness (20%)
      8/10 ████████░░  Vocabulary selection and frequency (15%)
@@ -50,7 +50,7 @@ On Linux, or if you prefer a terminal, see [Installing from the command line](#i
 
 ## What it scores
 
-The five non-negotiables carry 80% because they concern the learning material itself, the part you cannot fix without rewriting the deck. The nice-to-haves carry 20% because they improve the experience and can mostly be added later.
+The five fundamentals carry 80% because they concern the learning material itself, the part you cannot fix without rewriting the deck. The nice-to-haves carry 20% because they improve the experience and can mostly be added later.
 
 | Criterion | Weight | How it's judged |
 |---|---|---|

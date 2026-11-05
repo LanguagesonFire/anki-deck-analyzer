@@ -18,6 +18,7 @@ How words are counted changed in several languages.
 - Note types no note uses (Anki's stock Cloze or Basic) no longer count toward card variety or cloze.
 - "Grammar tables" needs a table that reads like a conjugation or declension table; a table used only for layout doesn't count.
 - An HTML report is written by default, and the deck's SHA-256 is explained as a fingerprint of the file.
+- The five criteria that carry 80% of the score are called the fundamentals (they were the non-negotiables), and the JSON field `score.non_negotiables` is now `score.fundamentals`. Weights and scores are unchanged.
 - `--publish` is gone from the options; `--model claude-opus-5-5` selects Opus. Old reproduce commands that use `--publish` still run.
 
 ## 1.6.0
