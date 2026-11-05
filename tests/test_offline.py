@@ -1984,3 +1984,32 @@ def test_no_source_file_holds_a_stray_backspace():
     for path in glob.glob(os.path.join(root, "*.py")):
         with open(path, encoding="utf-8") as fh:
             assert "\x08" not in fh.read(), path
+
+
+def test_explanation_fields_must_be_in_use_and_filled():
+    """A Remarks field the notes fill counts; a Hint field nobody fills does not."""
+    from anki_deck_analyzer.apkg import Deck, Note, NoteType, Template
+
+    t = [Template("c", "{{Text}}", "")]
+    types_ = {
+        1: NoteType(1, "Sentence", ["Text", "RemarksBack"], t, "", False),
+        2: NoteType(2, "Stock", ["Text", "Hint"], t, "", False),
+    }
+    notes = [Note(i, 1, [f"frase {i}", ""], []) for i in range(40)]
+    deck = Deck(name="d", path="d.apkg", file_sha256="", notes=notes, notetypes=types_)
+    assert not scoring._filled_explanation_fields(deck), "no note fills RemarksBack"
+    for n in notes[:4]:
+        n.fields[1] = "<b>wa</b> is the topic particle here"
+    assert scoring._filled_explanation_fields(deck)
+
+
+def test_one_nested_deck_is_not_subdecks():
+    m = _metrics_with_rates([0.5])
+    deck = types.SimpleNamespace(notetypes={}, notes=[])
+    m.deck_tree = ["Course::Part 1"]
+    feats = {label: (ok, detail) for label, ok, detail in scoring.detect_extras(deck, m)}
+    assert feats[dict(criteria.EXTRA_FEATURES)["subdecks"]] == (False, "all notes in one deck")
+    m.deck_tree = ["Course::Part 1", "Course::Part 2"]
+    feats = {label: (ok, detail) for label, ok, detail in scoring.detect_extras(deck, m)}
+    assert feats[dict(criteria.EXTRA_FEATURES)["subdecks"]][0]
+

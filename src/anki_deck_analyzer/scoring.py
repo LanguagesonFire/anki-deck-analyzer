@@ -209,17 +209,47 @@ def production_share(deck, metrics: Metrics, profile=None) -> tuple[float, str]:
     )
 
 
+_EXPLANATION_FIELD_WORDS = (
+    "note", "hint", "explan", "comment", "usage", "info", "gramm", "remark", "tip",
+)
+
+
+def _filled_explanation_fields(deck) -> bool:
+    """True when a note type in use has an explanation-named field that its
+    notes fill in. A field that exists only on an unused stock note type, or
+    that no note fills, explains nothing to the learner."""
+    by_type: dict[int, list] = {}
+    for note in deck.notes:
+        by_type.setdefault(note.notetype_id, []).append(note)
+    for nt_id, notes in by_type.items():
+        nt = deck.notetypes.get(nt_id)
+        if nt is None:
+            continue
+        for i, name in enumerate(nt.fields):
+            if not any(w in name.lower() for w in _EXPLANATION_FIELD_WORDS):
+                continue
+            filled = sum(
+                1 for n in notes
+                if i < len(n.fields) and tx.TAG_RE.sub("", n.fields[i]).strip()
+            )
+            if filled >= max(1, len(notes) // 20):
+                return True
+    return False
+
+
 def detect_extras(deck, metrics: Metrics, profile=None) -> list[tuple[str, bool, str]]:
     """The article's 'other helpful features' — reported, never scored."""
     out: list[tuple[str, bool, str]] = []
     labels = dict(EXTRA_FEATURES)
 
-    subdecks = [d for d in metrics.deck_tree if "::" in d]
+    # deck_tree lists the decks that hold notes. One nested deck
+    # ("Course::Part 1") has nothing to study or skip separately.
+    subdecks = metrics.deck_tree if len(metrics.deck_tree) > 1 else []
     out.append(
         (
             labels["subdecks"],
             bool(subdecks),
-            f"{len(subdecks)} subdecks" if subdecks else "one flat deck",
+            f"{len(subdecks)} subdecks" if subdecks else "all notes in one deck",
         )
     )
 
@@ -246,14 +276,7 @@ def detect_extras(deck, metrics: Metrics, profile=None) -> list[tuple[str, bool,
     share, detail = production_share(deck, metrics, profile)
     out.append((labels["active_recall"], share < 1.0, detail))
 
-    note_fields = any(
-        any(
-            word in name.lower()
-            for word in ("note", "hint", "explan", "comment", "usage", "info", "gramm")
-        )
-        for nt in deck.notetypes.values()
-        for name in nt.fields
-    )
+    note_fields = _filled_explanation_fields(deck)
     out.append(
         (
             labels["notes"],

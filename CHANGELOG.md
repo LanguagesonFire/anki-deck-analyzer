@@ -16,6 +16,7 @@ How words are counted changed in several languages.
 - Text-to-speech counts as audio only when it speaks the language being learned. A deck that reads its English side aloud no longer gets full audio coverage for it.
 - A reverse card with a type-in box (`{{type:Field}}`) counts as production.
 - Note types no note uses (Anki's stock Cloze or Basic) no longer count toward card variety or cloze.
+- "Short notes and explanations" needs an explanation field (now including Remarks and Tip) that the notes fill in, on a note type the deck uses. "Subdecks" needs notes in at least two decks; one nested deck doesn't count.
 - "Grammar tables" needs a table that reads like a conjugation or declension table; a table used only for layout doesn't count.
 - An HTML report is written by default, and the deck's SHA-256 is explained as a fingerprint of the file.
 - The five criteria that carry 80% of the score are called the fundamentals (they were the non-negotiables), and the JSON field `score.non_negotiables` is now `score.fundamentals`. Weights and scores are unchanged.
