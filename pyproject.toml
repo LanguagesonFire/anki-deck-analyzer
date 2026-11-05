@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anki-deck-analyzer"
-version = "1.7.0"
+version = "1.8.0"
 description = "Score an Anki language deck against nine published quality criteria."
 readme = "README.md"
 requires-python = ">=3.9"

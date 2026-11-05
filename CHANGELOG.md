@@ -2,6 +2,22 @@
 
 Every report prints the analyzer version it was made with. Compare two decks only on reports from the same version: the changes below move scores or measurements.
 
+## 1.8.0
+
+Word lists and tagged decks are scored for how they're meant to be studied.
+
+- A word list is no longer marked down for working the way word lists work. On a card that teaches one word, the word is new by construction, which is i+1 at card level. The progression rubric dropped "frequency-list order" from its lowest band and judges word cards on their order instead: basics first, rare words late. A deck of bare words with no sentences tops out at 8 for progression.
+- Example sentences on word cards are held to i+1. The headword is the card's one new item; an example that brings in any other unknown word fails, even when the headword is inflected differently in the example.
+- The curve gets a column for the new-word rate in sentences alone. When single words make up a fifth of the deck or more, the curve's shape is read over the sentences. The i+1 share counts distinct new words, so a new word used twice in one sentence counts once.
+- A headword or dictionary-form field now counts as taught for the cards after it, which lowers later new-word rates slightly on decks that have one.
+- Level tags (d1–d4, CEFR A1–C2, JLPT N5–N1, HSK, beginner to advanced) are detected. When the default order ignores them, the deck is measured a second time, lowest level first; both curves are in the report and the judge sees the first notes of that path. Progression is scored on the path the deck's tags support, with at most a point off for the setup it takes.
+- Frequency bands with three digits (Level001 to Level169) count as level tags when the tag says "level". With more than eight levels, the report summarizes them instead of listing each one.
+- Sentence quality defines "level-appropriate": pitched for the deck's stated level and for the word the sentence teaches. A natural sentence far harder than its word is a weakness, and a 5–6 problem when the sample shows many of them. Where a sentence sits in the order is left to progression, so a bad order isn't penalized twice.
+- A deck ordered by an exam or level list (Goethe, CEFR, JLPT, HSK) is not put in the bottom band for its order, and scores at most 8 for vocabulary.
+- A supplement (phrase book, conjugation drill, alphabet deck, exam word list) gets a line under its total saying it was scored as a main course, and which criteria matter less for it. Weights and scores are unchanged by this.
+- Character-counted decks (Chinese, Japanese) and Korean without Kiwi say next to the curve that its figures can't be compared with word-counted decks.
+- The curve's description no longer says the rate "falls" when it rose.
+
 ## 1.7.0
 
 How words are counted changed in several languages.

@@ -1,6 +1,6 @@
 """Score an Anki deck against the Languages on Fire deck-quality framework."""
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 from .analyze import Analysis, analyze, preview  # noqa: E402,F401
 from .apkg import Deck, DeckReadError, read_package  # noqa: E402,F401

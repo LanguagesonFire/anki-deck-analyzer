@@ -100,7 +100,9 @@ PROFILE_SCHEMA = {
             "type": "string",
             "description": (
                 "One short phrase: 'sentence deck', 'vocabulary list', "
-                "'cloze course', 'dialogue-based course', 'mixed', or similar."
+                "'exam word list', 'phrase book', 'conjugation drill', "
+                "'alphabet or script deck', 'cloze course', "
+                "'dialogue-based course', 'mixed', or similar."
             ),
         },
         "level_range": {

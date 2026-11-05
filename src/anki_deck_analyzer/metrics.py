@@ -21,6 +21,16 @@ from . import textutil as tx
 
 #: Minimum word count for a note to be read as a sentence rather than an entry.
 SENTENCE_MIN_WORDS = 4
+#: From this share of single-word notes on, the deck's format decides its
+#: all-notes new-word rate, and the curve is read over its sentences instead.
+FORMAT_ENTRY_SHARE = 0.20
+#: Fewer sentences than this in a part and their rate is noise.
+MIN_SENTENCES_PER_PART = 10
+#: A word in an example counts as the card's headword in another form when the
+#: two share this many leading letters, and that much of the shorter one: the
+#: inflected "uzbroimy" under the headword "uzbroić".
+HEADWORD_STEM_MIN = 4
+HEADWORD_STEM_SHARE = 0.6
 
 #: Above this median token count, a field is a dictionary dump rather than an
 #: example sentence, and measuring it would swamp the curve for every note type
@@ -53,11 +63,17 @@ class Bucket:
     median_words: float
     mean_new_words: float
     #: Share of the sentence-length notes in this part that introduce at most
-    #: one unfamiliar word. None when the part holds no sentences.
+    #: one unfamiliar word. None when the part holds no sentences. On a word
+    #: card measured on its example sentence, the headword is the card's one
+    #: new item: the example passes only if it brings in nothing else.
     share_at_most_one_new: float | None
     #: Notes in this part long enough to read as a sentence.
     sentence_notes: int
     cumulative_vocab: int
+    #: The new-word rate over the sentence-length notes alone. In a word list
+    #: nearly every word on a one-word card is new by construction, so the rate
+    #: over all notes reads the deck's format, not its order.
+    sentence_new_word_rate: float | None = None
 
 
 @dataclass
@@ -141,6 +157,17 @@ class Metrics:
     #: (study position, hidden text, where it shows) for the first few.
     cloze_leak_examples: list[tuple[int, str, str]] = field(default_factory=list)
 
+    #: Measured notes shorter than a sentence: single words and short phrases.
+    entry_notes: int = 0
+    #: Measured notes long enough to read as a sentence.
+    sentence_notes: int = 0
+    #: Of those, how many add at most one new word (headword included), over
+    #: the whole deck. None when the deck has no sentences.
+    i_plus_one_share: float | None = None
+    #: Sentence notes that come with a headword or stated dictionary form, so
+    #: the headword was counted as the card's new item.
+    headword_sentences: int = 0
+
     # ---- readings used by the report ------------------------------------
 
     @property
@@ -163,6 +190,69 @@ class Metrics:
         return late - early
 
     @property
+    def entry_share(self) -> float:
+        """Share of measured notes that are words or short phrases."""
+        total = self.entry_notes + self.sentence_notes
+        return self.entry_notes / total if total else 0.0
+
+    @property
+    def curve_reads_sentences(self) -> bool:
+        """Whether the curve is described over sentences alone.
+
+        When a fifth or more of the deck is single words, the all-notes rate is
+        dominated by those cards, each new by construction. The sentences then
+        carry the progression reading, as long as every part holds enough of
+        them to measure.
+        """
+        return (
+            self.entry_share >= FORMAT_ENTRY_SHARE
+            and len(self.buckets) >= 4
+            and all(
+                b.sentence_new_word_rate is not None
+                and b.sentence_notes >= MIN_SENTENCES_PER_PART
+                for b in self.buckets
+            )
+        )
+
+    @property
+    def format_line(self) -> str:
+        """What the deck is made of, and what that does to the curve."""
+        total = self.entry_notes + self.sentence_notes
+        if not total:
+            return ""
+        text = (
+            f"Format: {self.sentence_notes:,} of {total:,} measured notes "
+            f"({1 - self.entry_share:.0%}) are sentences of {SENTENCE_MIN_WORDS} "
+            f"words or more; {self.entry_notes:,} ({self.entry_share:.0%}) are "
+            "single words or short phrases."
+        )
+        if self.i_plus_one_share is not None:
+            text += (
+                f" Across the whole deck, {self.i_plus_one_share:.0%} of the "
+                "sentences add at most one new word."
+            )
+        if self.headword_sentences:
+            text += (
+                f" {self.headword_sentences:,} of the sentences are examples on a "
+                "card that names the word it teaches; there the headword is the "
+                "card's one new item, so an example passes only if it brings in "
+                "no other unknown word."
+            )
+        if self.entry_share >= FORMAT_ENTRY_SHARE:
+            text += (
+                " A card that teaches one word introduces one new item, which is "
+                "i+1 at card level, so on such cards a high new-word rate is the "
+                "format, not a fault."
+            )
+            text += (
+                " The curve's shape below is read over the sentences alone."
+                if self.curve_reads_sentences
+                else " Too few sentences per part to read the curve over them alone, "
+                "so its shape mostly reflects the word cards."
+            )
+        return text
+
+    @property
     def curve_shape(self) -> str:
         """The curve described in words, the way the rubric reads it.
 
@@ -174,7 +264,11 @@ class Metrics:
         b = self.buckets
         if len(b) < 4:
             return ""
-        rates = [x.new_word_rate for x in b]
+        over_sentences = self.curve_reads_sentences
+        rates = [
+            x.sentence_new_word_rate if over_sentences else x.new_word_rate for x in b
+        ]
+        what = "new-word rate in sentences" if over_sentences else "new-word rate"
         # Where the opening ends: the first part within a point and a half of
         # the median of everything after it.
         settle = len(rates) - 1
@@ -186,12 +280,13 @@ class Metrics:
         tail = rates[settle:]
         lo, hi = min(tail), max(tail)
         level = statistics.median(tail)
+        moves = "falls" if rates[settle] < rates[0] else "rises"
         text = (
-            f"The new-word rate falls from {rates[0]:.1%} to {rates[settle]:.1%} by "
+            f"The {what} {moves} from {rates[0]:.1%} to {rates[settle]:.1%} by "
             f"part {settle + 1}, then holds between {lo:.1%} and {hi:.1%} "
             f"(median {level:.1%}) for the rest of the deck."
             if settle > 0
-            else f"The new-word rate holds between {lo:.1%} and {hi:.1%} from the start."
+            else f"The {what} holds between {lo:.1%} and {hi:.1%} from the start."
         )
         spikes = [
             f"part {settle + j + 1} ({r:.1%})"
@@ -213,6 +308,37 @@ class Metrics:
         early = statistics.fmean(b.mean_words for b in self.buckets[:2])
         late = statistics.fmean(b.mean_words for b in self.buckets[-2:])
         return late / early if early else 1.0
+
+
+def _is_headword(token: str, headword: set[str]) -> bool:
+    """Whether `token` is the card's headword, in the same or another form."""
+    if token in headword:
+        return True
+    for h in headword:
+        n = 0
+        for a, b in zip(token, h):
+            if a != b:
+                break
+            n += 1
+        if n >= HEADWORD_STEM_MIN and n >= HEADWORD_STEM_SHARE * min(len(token), len(h)):
+            return True
+    return False
+
+
+def card_new_items(new: Iterable[str], headword: set[str], seen: set[str]) -> int:
+    """How many unfamiliar items one card brings, headword included.
+
+    A word card with an example teaches its headword: that is the card's one
+    new item, however many times it appears in the example and in whatever
+    form. Every other unfamiliar word in the example is one more. Without a
+    headword this is simply the number of distinct new words.
+    """
+    fresh = set(new)
+    if not headword:
+        return len(fresh)
+    others = {t for t in fresh if not _is_headword(t, headword)}
+    teaches = bool(fresh - others) or any(h not in seen for h in headword)
+    return len(others) + (1 if teaches else 0)
 
 
 def _target_text(note: Note, target_field_index: int | None) -> str:
@@ -416,6 +542,7 @@ def compute(
     frequency_list: str | None = None,
     explanation_types: set[int] | None = None,
     lemma_fields: dict[int, list[int]] | None = None,
+    lexicon: lx.Lexicon | None = None,
 ) -> Metrics:
     """Measure `deck`.
 
@@ -431,6 +558,8 @@ def compute(
     `explanation_types` are note type ids whose cards explain rather than
     teach; `lemma_fields` maps a note type id to fields stating the dictionary
     form of a word the card teaches. Both come from the identification call.
+    `lexicon` reuses one already built for the same deck in another order, so
+    both readings count words the same way.
     """
     explanation_types = explanation_types or set()
     lemma_fields = lemma_fields or {}
@@ -641,6 +770,8 @@ def compute(
     #: (position in unique_texts, a dictionary form that note states)
     stated_forms: list[tuple[int, str]] = []
     unique_companions: list[str] = []
+    #: per entry of unique_texts: the forms its first note states
+    unique_stated: list[list[str]] = []
     for text, forms, beside in zip(texts, stated, companions):
         # Keyed on the text itself, not on its word tokens: tokenizing drops
         # digits, which would merge "I am 20 years old" into "I am 30 years old".
@@ -652,18 +783,28 @@ def compute(
         if key:
             material_seen[key] = len(unique_texts)
         stated_forms += [(len(unique_texts), f) for f in forms]
+        unique_stated.append(forms)
         unique_texts.append(text)
         unique_companions.append(beside)
     repeated_notes = len(texts) - len(unique_texts)
 
-    lex = lx.build(unique_texts, language, unique_companions, other_fields)
+    lex = lexicon or lx.build(unique_texts, language, unique_companions, other_fields)
     tokens = [lex.words(text) for text in unique_texts]
 
-    for toks in tokens:
+    #: per note: unfamiliar items on the card, headword counted once
+    per_note_items: list[int] = []
+    headword_sentences = 0
+    for toks, forms in zip(tokens, unique_stated):
         if not toks:
             missing_text += 1
+        headword = {t for f in forms for t in lex.words(f)}
         new = [t for t in toks if t not in seen]
+        per_note_items.append(card_new_items(new, headword, seen))
+        if headword and len(toks) >= SENTENCE_MIN_WORDS:
+            headword_sentences += 1
         seen.update(toks)
+        # The card names the word it teaches, so later cards meet it as known.
+        seen.update(headword)
         per_note_new.append(len(new))
         per_note_total.append(len(toks))
 
@@ -679,7 +820,13 @@ def compute(
             end = int(round((i + 1) * size)) if i < bucket_count - 1 else span
             chunk_new = per_note_new[start:end]
             chunk_tot = per_note_total[start:end]
+            chunk_items = per_note_items[start:end]
             live = [(a, b) for a, b in zip(chunk_new, chunk_tot) if b]
+            sentence_rows = [
+                (a, b, c)
+                for a, b, c in zip(chunk_new, chunk_tot, chunk_items)
+                if b >= SENTENCE_MIN_WORDS
+            ]
             while cursor < end:
                 running.update(tokens[cursor])
                 cursor += 1
@@ -690,7 +837,8 @@ def compute(
             # The i+1 reading only means something for sentences. A one-word
             # vocabulary card introduces one new word by construction, and
             # counting those would flatter every vocabulary deck.
-            sentences = [a for a, b in live if b >= SENTENCE_MIN_WORDS]
+            sentences = [c for _, _, c in sentence_rows]
+            sentence_tokens = sum(b for _, b, _ in sentence_rows)
             buckets.append(
                 Bucket(
                     index=i + 1,
@@ -708,6 +856,11 @@ def compute(
                     ),
                     sentence_notes=len(sentences),
                     cumulative_vocab=len(running),
+                    sentence_new_word_rate=(
+                        sum(a for a, _, _ in sentence_rows) / sentence_tokens
+                        if sentence_tokens
+                        else None
+                    ),
                 )
             )
 
@@ -771,6 +924,10 @@ def compute(
     freq.missing_explained = [w for _, w in freq.missing if w.lower() in explained]
 
     total_tokens = sum(per_note_total)
+    sentence_items = [
+        c for c, t in zip(per_note_items, per_note_total) if t >= SENTENCE_MIN_WORDS
+    ]
+    entry_notes = sum(1 for t in per_note_total if 0 < t < SENTENCE_MIN_WORDS)
     warnings: list[str] = list(extra_warnings or [])
     if analysed < n * 0.5:
         warnings.append(
@@ -826,6 +983,14 @@ def compute(
         cloze_deletions_checked=cloze_checked,
         cloze_answers_shown=cloze_shown,
         cloze_leak_examples=cloze_examples,
+        entry_notes=entry_notes,
+        sentence_notes=len(sentence_items),
+        i_plus_one_share=(
+            sum(1 for c in sentence_items if c <= 1) / len(sentence_items)
+            if sentence_items
+            else None
+        ),
+        headword_sentences=headword_sentences,
     )
 
 
@@ -839,27 +1004,47 @@ def curve_table(metrics: Metrics) -> str:
     if not metrics.buckets:
         return "(deck too small to measure a progression curve)"
     lines = [
-        "part |  notes | new-word rate | sentences | <=1 new word | mean words | vocab so far",
-        "-----+--------+---------------+-----------+--------------+------------+-------------",
+        "part |  notes | new-word rate | sentences | in sentences | <=1 new word | mean words | vocab so far",
+        "-----+--------+---------------+-----------+--------------+--------------+------------+-------------",
     ]
+
+    def share(value: float | None) -> str:
+        return f"{value:>12.1%}" if value is not None else f"{'-':>12}"
+
     for b in metrics.buckets:
-        i_plus_one = (
-            f"{b.share_at_most_one_new:>12.1%}"
-            if b.share_at_most_one_new is not None
-            else f"{'-':>12}"
-        )
         lines.append(
             f"{b.index:>4} | {b.note_count:>6} | "
-            f"{b.new_word_rate:>12.1%} | {b.sentence_notes:>9} |{i_plus_one} | "
+            f"{b.new_word_rate:>12.1%} | {b.sentence_notes:>9} |"
+            f"{share(b.sentence_new_word_rate)} |{share(b.share_at_most_one_new)} | "
             f"{b.mean_words:>10.1f} | {b.cumulative_vocab:>12,}"
         )
     lines.append("")
     lines.append(
         f"'sentences' counts the notes in that part holding at least "
-        f"{SENTENCE_MIN_WORDS} words. The i+1 column is measured over those alone, "
-        "since a one-word vocabulary card introduces one new word by construction."
+        f"{SENTENCE_MIN_WORDS} words; 'in sentences' is the new-word rate over those "
+        "alone. The i+1 column is measured over them too, since a one-word "
+        "vocabulary card introduces one new word by construction."
     )
+    note = comparability_note(metrics.lexicon)
+    if note:
+        lines.append(note)
     return "\n".join(lines)
+
+
+def comparability_note(lexicon: lx.Lexicon) -> str:
+    """Said next to the curve when its figures don't compare with word counts."""
+    if lexicon.method == lx.METHOD_CHARACTER:
+        return (
+            "Counted per character, not per word: this curve and its i+1 share "
+            "can't be compared with decks whose words are counted."
+        )
+    if lexicon.language == "ko" and not tx.korean_morphemes():
+        return (
+            "Korean is counted by spelled form here, because Kiwi isn't installed: "
+            "a word with a different particle or ending counts as new. Compare "
+            "this curve only with Korean decks counted the same way."
+        )
+    return ""
 
 
 def iter_target_texts(

@@ -8,6 +8,8 @@ what was measured.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 
 from .criteria import CRITERIA, EXTRA_FEATURES, Criterion, FUNDAMENTAL
@@ -66,6 +68,9 @@ class Result:
     extras: list[tuple[str, bool, str]] = field(default_factory=list)
     #: Filled in after the closing summary call.
     summary: dict = field(default_factory=dict)
+    #: Said under the total when the deck is a supplement, not a course: the
+    #: weights treat every deck as a main course. Empty otherwise.
+    scored_as: str = ""
 
     def by_key(self, key: str) -> Score | None:
         return next((s for s in self.scores if s.criterion.key == key), None)
@@ -361,4 +366,36 @@ def combine(
         nice_to_have_total=group_total("nice-to-have"),
         unassessed=unassessed,
         extras=detect_extras(deck, metrics, profile),
+        scored_as=supplement_note(getattr(profile, "deck_kind", "")),
     )
+
+
+#: Kinds of deck meant to sit next to a course, matched on the identified
+#: kind, with the criteria that read differently for each. The weights stay
+#: the same; the report says so instead.
+SUPPLEMENTS: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (("phrase book", "phrasebook", "travel phrase", "survival phrase"),
+     "phrase book", "progression, grammar handling and context"),
+    (("conjugation", "declension", "drill", "verb table"),
+     "conjugation or grammar drill", "vocabulary, sentence quality and context"),
+    (("alphabet", "script", "kana", "hiragana", "katakana", "hangul", "pinyin",
+      "pronunciation", "radical", "stroke"),
+     "script or pronunciation deck",
+     "progression, sentence quality, vocabulary, grammar handling and context"),
+    (("exam", "word list", "wordlist", "vocabulary list", "frequency list",
+      "wortliste", "jlpt", "hsk", "dele", "goethe"),
+     "word list", "sentence quality, grammar handling and context"),
+)
+
+
+def supplement_note(deck_kind: str) -> str:
+    """One line under the total for a deck that isn't a main course."""
+    kind = (deck_kind or "").lower()
+    for markers, name, criteria in SUPPLEMENTS:
+        # Whole words only: "transcript" is not a script deck, "example" no exam.
+        if any(re.search(rf"\b{re.escape(m)}\b", kind) for m in markers):
+            return (
+                f"Scored as a main course. This deck is a {name}; if you use it "
+                f"next to a course, its {criteria} scores matter less."
+            )
+    return ""

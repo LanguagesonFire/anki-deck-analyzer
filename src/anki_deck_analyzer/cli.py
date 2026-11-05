@@ -315,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
                 analysis.cost,
                 analysis.model,
                 provenance=analysis.provenance,
+                study_path=analysis.study_path,
             )
         )
 
@@ -330,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
                     analysis.model,
                     analysis.cost,
                     analysis.provenance,
+                    study_path=analysis.study_path,
+                    level_tags=analysis.level_tags,
                 )
             elif ext in (".md", ".markdown", ".txt"):
                 body = render_markdown(
@@ -338,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
                     analysis.metrics,
                     analysis.result,
                     analysis.model,
+                    study_path=analysis.study_path,
                 )
             else:
                 body = render_html(
@@ -347,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
                     analysis.result,
                     analysis.model,
                     analysis.provenance,
+                    study_path=analysis.study_path,
                 )
             try:
                 _write(target, body)

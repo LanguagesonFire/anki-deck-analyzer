@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 
 from . import __version__
+from . import levels
 from .apkg import Deck, read_package
 from .criteria import CRITERIA
 from .evidence import SAMPLE_SEED, DeckProfile, build_pack
@@ -61,6 +62,11 @@ class Analysis:
     model: str
     cost: float | None
     provenance: Provenance | None = None
+    #: The level tags found on the notes, if any.
+    level_tags: levels.LevelTags | None = None
+    #: The deck measured in level-tag order, when its default order ignores
+    #: the tags.
+    study_path: levels.StudyPath | None = None
 
 
 def analyze(
@@ -104,8 +110,19 @@ def analyze(
         explanation_types=profile.explanation_types,
         lemma_fields=with_headwords(profile.lemma_fields, profile.target_fields, measured),
     )
+    tags, path = _study_path(
+        deck,
+        metrics,
+        measured,
+        say,
+        language=profile.target_language,
+        explanation_language=profile.source_language,
+        frequency_list=frequency_list,
+        explanation_types=profile.explanation_types,
+        lemma_fields=with_headwords(profile.lemma_fields, profile.target_fields, measured),
+    )
 
-    pack = build_pack(deck, metrics, profile, measured)
+    pack = build_pack(deck, metrics, profile, measured, tags=tags, path=path)
 
     # Audio and images are measured, not judged; everything else goes to the model.
     judged = [c for c in CRITERIA if not c.measured]
@@ -163,7 +180,26 @@ def analyze(
         model=analyzer.model,
         cost=analyzer.usage.cost(analyzer.model),
         provenance=provenance,
+        level_tags=tags,
+        study_path=path,
     )
+
+
+def _study_path(deck: Deck, metrics: Metrics, measured: dict[int, int], say=None, **options):
+    """Level tags on the deck, and the deck measured in their order.
+
+    A deck tagged by level and shipped in another order is often meant to be
+    studied level by level. The second reading uses the same fields and the
+    same word counting as the first, so the two can be set side by side.
+    """
+    tags = levels.detect(deck)
+    if tags is None or tags.follows_default_order:
+        return tags, None
+    if say:
+        say(f"Measuring the deck again in level-tag order ({tags.family})")
+    tag_deck = levels.in_tag_order(deck, tags)
+    tag_metrics = compute(tag_deck, measured, lexicon=metrics.lexicon, **options)
+    return tags, levels.StudyPath(tags=tags, deck=tag_deck, metrics=tag_metrics)
 
 
 def preview(
@@ -213,15 +249,15 @@ def preview(
             if f not in nt.fields:
                 raise ValueError(f"note type {name!r} has no field {f!r}")
         stated[nt.id] = [nt.fields.index(f) for f in field_names]
-    metrics = compute(
-        deck,
-        target_fields,
+    options = dict(
         language=language,
         explanation_language=explanation_language,
         frequency_list=frequency_list,
         explanation_types=explain,
         lemma_fields=stated,
     )
+    metrics = compute(deck, target_fields, **options)
+    tags, path = _study_path(deck, metrics, target_fields, **options)
     profile = DeckProfile(
         target_language=language or "unknown",
         source_language=explanation_language,
@@ -229,4 +265,4 @@ def preview(
         explanation_types=explain,
         lemma_fields=stated,
     )
-    return deck, metrics, build_pack(deck, metrics, profile)
+    return deck, metrics, build_pack(deck, metrics, profile, tags=tags, path=path)

@@ -174,7 +174,7 @@ Every report ends with the exact command that produced it, plus the analyzer ver
 ```
 To reproduce this score
   anki-deck-analyzer "deck.apkg"
-  analyzer 1.7.0 · sample seed 7 · words counted lemma:simplemma 1.2.0 · deck sha256 272314f187741604…
+  analyzer 1.8.0 · sample seed 7 · words counted lemma:simplemma 1.2.0 · deck sha256 272314f187741604…
 ```
 
 The sample is seeded, so the same deck always puts the same cards in front of the model. If the SHA-256 matches, you have the same file. Compare decks only on reports from the same analyzer version; [CHANGELOG.md](CHANGELOG.md) lists the changes that move scores.
@@ -199,21 +199,29 @@ The deck file never leaves your computer. What gets sent to the Anthropic API is
 
 ## How the measurements work
 
-**It measures the deck first.** Before any model sees anything, the tool walks the deck in the order you'd study it and counts how much unfamiliar language each card introduces. That produces a progression curve: the deck in ten equal parts, with the share of words in each part that had not appeared earlier. A deck that builds properly trends downward. A frequency list dressed up as a course does not.
+**It measures the deck first.** Before any model sees anything, the tool walks the deck in the order you'd study it and counts how much unfamiliar language each card introduces. That produces a progression curve: the deck in ten equal parts, with the share of words in each part that had not appeared earlier, and the share of sentences that add at most one new word. A sentence deck that builds properly trends downward.
 
 ```
-part |  notes | new-word rate | sentences | <=1 new word | mean words | vocab so far
------+--------+---------------+-----------+--------------+------------+-------------
-   1 |    403 |         41.2% |       330 |        18.5% |        7.1 |        1,204
-   5 |    403 |         14.8% |       351 |        52.4% |       10.3 |        4,890
-  10 |    402 |          9.6% |       366 |        61.2% |       11.8 |        7,331
+part |  notes | new-word rate | sentences | in sentences | <=1 new word | mean words | vocab so far
+-----+--------+---------------+-----------+--------------+--------------+------------+-------------
+   1 |    403 |         41.2% |       330 |        39.8% |        18.5% |        7.1 |        1,204
+   5 |    403 |         14.8% |       351 |        14.1% |        52.4% |       10.3 |        4,890
+  10 |    402 |          9.6% |       366 |         9.3% |        61.2% |       11.8 |        7,331
 ```
+
+A word list works differently, and it's measured differently. On a card that teaches one word, that word is new by construction, so a word list's overall new-word rate stays high whatever order it's in. That's i+1 at the level of the card, not a fault. When single words make up a fifth of the deck or more, the curve is read over the sentences alone, and the word cards are judged on their order: basics first, rare words late. Example sentences still count. On a word card the headword is the one new item, so an example that brings in three other unknown words fails the i+1 test.
 
 Decks that offer the same sentences in several recall directions (read it, hear it, produce it) are giving you a menu, not teaching the material three times, so the curve follows each piece of material the first time it appears. On a deck whose notes carry a headword and an example sentence, the curve reads the example, because progression is a property of the sentences you meet.
+
+**It reads the study path the author tagged.** Some decks are shipped in one order and meant to be studied in another: a word list tagged d1 to d4, say, whose description tells beginners to suspend everything above d1. When the notes carry level tags (d1–d4, CEFR A1–C2, JLPT N5–N1, HSK 1–6, beginner to advanced) and the default order ignores them, the deck is measured a second time, lowest level first, and both curves appear in the report. Progression is scored on the path the tags support, with a point off at most for the setup it takes.
 
 Names are left out of the count: a word only ever written with a capital, and capitalized at least once mid-sentence, is a character or a place. Grammar and announcement cards are kept out too, so grammar terminology is never read as vocabulary, and English lines inside a target-language field, such as a dialogue's stage directions, are dropped. When a card states a word's dictionary form in its own field, that word counts as taught.
 
 **It holds the vocabulary against a frequency list**, one general-purpose list per language and the same for every deck: [wordfreq](https://pypi.org/project/wordfreq/)'s blend of subtitles, web text, Wikipedia and books, or for French, Lexique 3.83 (New & Pallier). wordfreq's French leans toward news and Wikipedia: *gouvernement*, *ministre* and *société* rank in its top 320, ahead of words a learner hears every day. Lexique ranks by film-subtitle and book frequency and assigns its own dictionary forms, so *mise* is never counted as the verb *miser*. The Languages on Fire French course was built with a Lexique-based list, so it starts with an advantage here; `--frequency-list wordfreq` measures any French deck, ours included, against the general list instead. The report says how many of the 1,000 and 2,000 most common words the deck teaches, how early they arrive, and which words are unusually rare for where they appear, so the model judges vocabulary from ranks instead of its own sense of which words are common. The wordfreq lists are cleaned first: foreign words from web pages, misspellings and junk are taken out by a patch built against a spelling dictionary, applied to your own wordfreq install. The report names the list and any limits of its cleaning.
+
+Exam and level lists (the Goethe Wortliste, CEFR levels, JLPT, HSK) track frequency closely, so a good one measures well against the general list on its own. A deck ordered by one has an ordering principle and is never put in the bottom band for its order, but it scores at most 8 for vocabulary: for a general learner, frequency order gets you further sooner. For that exam, the report says, the list's order is the right one.
+
+Every deck is scored as if it were your main course, because that's what the weights describe. When the deck is a supplement (a phrase book, a conjugation drill, an alphabet deck, an exam word list), the report says so under the total and names the criteria that matter less for it. The score itself doesn't change.
 
 **It counts what can be counted:** audio and image coverage, duplicate notes, cards per note, cloze types, subdecks, vocabulary size and mean sentence length. On a cloze deck it checks every deletion for a give-away, the hidden text showing up word for word elsewhere on the front.
 

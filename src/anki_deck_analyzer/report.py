@@ -17,6 +17,22 @@ from . import frequency as fq
 from .metrics import Metrics, curve_table
 from .scoring import Result
 
+
+def _path_title(study_path) -> str:
+    return f"The same deck, lowest level first ({study_path.tags.family} tags)"
+
+
+def _path_lines(study_path) -> list[str]:
+    """The level-tag study path as plain-text lines: description, table, shape."""
+    m = study_path.metrics
+    lines = [study_path.tags.describe()]
+    if m.format_line:
+        lines.append(m.format_line)
+    lines += ["", *curve_table(m).split("\n")]
+    if m.buckets and not m.lexicon.unsegmented:
+        lines += ["", m.curve_shape]
+    return lines
+
 BAR_FULL = "█"
 BAR_EMPTY = "░"
 
@@ -98,6 +114,7 @@ def render_terminal(
     model: str,
     stream=None,
     provenance=None,
+    study_path=None,
 ) -> str:
     stream = stream or sys.stdout
     s = Style(_use_color(stream))
@@ -116,6 +133,8 @@ def render_terminal(
     headline = f"{result.total:.0f}/100   {result.grade}"
     L.append("  " + s.for_score(round(result.total / 10), s.bold(headline)))
     L.append("  " + s.dim(result.grade_note))
+    if result.scored_as:
+        L.append(_wrap(result.scored_as, indent="  "))
     L.append("")
 
     L.append(s.bold("  The five fundamentals") + s.dim("   (80% of the score)"))
@@ -150,9 +169,23 @@ def render_terminal(
 
     if result.by_key("progression") and metrics.buckets:
         L.append(s.bold("  How much new language each part of the deck throws at you"))
+        if metrics.format_line:
+            L.append(_wrap(metrics.format_line, indent="    "))
+            L.append("")
         for line in curve_table(metrics).split("\n"):
             L.append("    " + s.dim(line) if line.startswith("-") else "    " + line)
         L.append("")
+        if study_path is not None and study_path.metrics.buckets:
+            L.append(s.bold("  " + _path_title(study_path)))
+            table = set(curve_table(study_path.metrics).split("\n")[:-1])
+            for line in _path_lines(study_path):
+                if line.startswith("-"):
+                    L.append("    " + s.dim(line))
+                elif line in table or not line:
+                    L.append("    " + line)
+                else:
+                    L.append(_wrap(line, indent="    "))
+            L.append("")
 
     if result.by_key("vocabulary") and metrics.frequency.available:
         L.append(s.bold("  The deck's vocabulary against a general frequency list"))
@@ -272,6 +305,7 @@ def render_markdown(
     metrics: Metrics,
     result: Result,
     model: str,
+    study_path=None,
 ) -> str:
     summary = getattr(result, "summary", None) or {}
     L = [
@@ -279,6 +313,7 @@ def render_markdown(
         "",
         f"**{result.total:.0f}/100 — {result.grade}.** {result.grade_note}",
         "",
+        *([result.scored_as, ""] if result.scored_as else []),
         f"{profile.target_language} · {profile.deck_kind} · "
         f"{metrics.note_count:,} notes · {metrics.card_count:,} cards · "
         f"analyzed {_today()}",
@@ -336,11 +371,20 @@ def render_markdown(
             "The deck split into ten equal parts in study order. "
             "'New-word rate' is the share of words in that part not seen earlier.",
             "",
+            *([metrics.format_line, ""] if metrics.format_line else []),
             "```",
             curve_table(metrics),
             "```",
             "",
         ]
+    if study_path is not None and study_path.metrics.buckets:
+        m = study_path.metrics
+        L += [f"### {_path_title(study_path)}", "", study_path.tags.describe(), ""]
+        if m.format_line:
+            L += [m.format_line, ""]
+        L += ["```", curve_table(m), "```", ""]
+        if not m.lexicon.unsegmented:
+            L += [m.curve_shape, ""]
     if metrics.frequency.available:
         L += [
             "## Vocabulary against a frequency list",
@@ -498,6 +542,7 @@ def render_html(
     result: Result,
     model: str,
     provenance=None,
+    study_path=None,
 ) -> str:
     summary = getattr(result, "summary", None) or {}
     today = date.today()
@@ -516,7 +561,12 @@ def render_html(
         f'<div><span class="big">{result.total:.0f}</span>'
         f'<span class="grade">/100 &nbsp;{_e(result.grade)}</span></div>'
         f'<p style="margin:.6em 0 0">{_e(summary.get("headline") or result.grade_note)}</p>'
-        "</div>"
+        + (
+            f'<p class="note" style="margin:.6em 0 0">{_e(result.scored_as)}</p>'
+            if result.scored_as
+            else ""
+        )
+        + "</div>"
     )
 
     parts.append("<h2>The five fundamentals</h2>")
@@ -596,7 +646,20 @@ def render_html(
             "The new-word rate is the share of words in each part that had not "
             "appeared earlier; a deck that builds properly trends downward.</p>"
         )
+        if metrics.format_line:
+            parts.append(f"<p>{_e(metrics.format_line)}</p>")
         parts.append(f"<pre>{_e(curve_table(metrics))}</pre>")
+        if not metrics.lexicon.unsegmented and metrics.curve_shape:
+            parts.append(f"<p>{_e(metrics.curve_shape)}</p>")
+    if study_path is not None and study_path.metrics.buckets:
+        m = study_path.metrics
+        parts.append(f"<h3>{_e(_path_title(study_path))}</h3>")
+        parts.append(f"<p>{_e(study_path.tags.describe())}</p>")
+        if m.format_line:
+            parts.append(f"<p>{_e(m.format_line)}</p>")
+        parts.append(f"<pre>{_e(curve_table(m))}</pre>")
+        if not m.lexicon.unsegmented and m.curve_shape:
+            parts.append(f"<p>{_e(m.curve_shape)}</p>")
 
     if metrics.frequency.available:
         parts.append("<h2>Vocabulary against a frequency list</h2>")
@@ -684,6 +747,10 @@ def render_html(
 # --------------------------------------------------------------------------
 
 
+def _round(value: float | None, digits: int = 4) -> float | None:
+    return round(value, digits) if value is not None else None
+
+
 def render_json(
     deck: Deck,
     profile: DeckProfile,
@@ -692,7 +759,11 @@ def render_json(
     model: str,
     cost: float | None,
     provenance=None,
+    study_path=None,
+    level_tags=None,
 ) -> str:
+    if level_tags is None and study_path is not None:
+        level_tags = study_path.tags
     payload = {
         "deck": {
             "name": deck.name,
@@ -716,6 +787,7 @@ def render_json(
             "fundamentals": round(result.fundamentals_total, 1),
             "nice_to_haves": round(result.nice_to_have_total, 1),
             "unassessed": result.unassessed,
+            "scored_as": result.scored_as,
         },
         "criteria": [
             {
@@ -752,6 +824,34 @@ def render_json(
             "new_word_rate_trend": round(metrics.new_word_rate_trend, 4),
             "length_growth": round(metrics.length_growth, 3),
             "buckets": [asdict(b) for b in metrics.buckets],
+            "entry_notes": metrics.entry_notes,
+            "sentence_notes": metrics.sentence_notes,
+            "i_plus_one_share": _round(metrics.i_plus_one_share),
+            "curve_shape": metrics.curve_shape,
+            "level_tags": (
+                {
+                    "family": level_tags.family,
+                    "levels": level_tags.levels,
+                    "counts": level_tags.counts,
+                    "coverage": round(level_tags.coverage, 4),
+                    "out_of_order": round(level_tags.out_of_order, 4),
+                    "median_position": {
+                        k: round(v, 1) for k, v in level_tags.median_position.items()
+                    },
+                }
+                if level_tags is not None
+                else None
+            ),
+            "study_path": (
+                {
+                    "order": study_path.deck.order_basis,
+                    "buckets": [asdict(b) for b in study_path.metrics.buckets],
+                    "i_plus_one_share": _round(study_path.metrics.i_plus_one_share),
+                    "curve_shape": study_path.metrics.curve_shape,
+                }
+                if study_path is not None
+                else None
+            ),
             "word_counting": metrics.lexicon.describe(),
             "names_left_out": sorted(metrics.lexicon.names),
             "frequency": asdict(metrics.frequency),

@@ -2013,3 +2013,211 @@ def test_one_nested_deck_is_not_subdecks():
     feats = {label: (ok, detail) for label, ok, detail in scoring.detect_extras(deck, m)}
     assert feats[dict(criteria.EXTRA_FEATURES)["subdecks"]][0]
 
+
+
+# --------------------------------------------------------------------------
+# 1.8.0: word lists, headwords, level tags, supplements
+# --------------------------------------------------------------------------
+
+from anki_deck_analyzer import levels  # noqa: E402
+from anki_deck_analyzer.analyze import _study_path  # noqa: E402
+
+
+def _simple_deck(rows, fields=("Text",)):
+    """rows: (fields, tags) in default order."""
+    from anki_deck_analyzer.apkg import Deck, Note, NoteType, Template
+
+    t = [Template("c", "{{" + fields[0] + "}}", "")]
+    nt = NoteType(1, "Vocab", list(fields), t, "", False)
+    notes = [
+        Note(i + 1, 1, list(f), list(tags), position=i) for i, (f, tags) in enumerate(rows)
+    ]
+    return Deck("d", "d.apkg", notes, {1: nt}, card_count=len(notes))
+
+
+def test_the_progression_rubric_no_longer_penalizes_frequency_order():
+    rubric = criteria.BY_KEY["progression"].rubric
+    low_band = rubric.split("\n")[0]
+    assert "frequency" not in low_band
+    assert "no ordering principle" in low_band
+    assert "i+1 at card level" in rubric
+    assert "headword is the card's one new item" in rubric
+
+
+def test_a_level_list_is_capped_but_not_put_in_the_bottom_band():
+    rubric = criteria.BY_KEY["vocabulary"].rubric
+    assert "does not put it in the 1-3 band" in rubric
+    assert "scores at most 8" in rubric
+
+
+def test_the_headword_is_the_cards_one_new_item():
+    seen: set[str] = set()
+    assert metrics.card_new_items(["hund"], {"hund"}, seen) == 1
+    assert metrics.card_new_items(["der", "hund", "bellt"], {"hund"}, seen) == 3
+    # An inflected form of the headword is still the headword.
+    assert metrics.card_new_items(["uzbroimy"], {"uzbroić"}, seen) == 1
+    # A headword already taught, in an example with nothing new: nothing new.
+    assert metrics.card_new_items([], {"hund"}, {"hund"}) == 0
+    # A new headword absent from the example still counts as the one item.
+    assert metrics.card_new_items([], {"hund"}, seen) == 1
+    # Without a headword, distinct new words.
+    assert metrics.card_new_items(["a", "b", "a"], set(), seen) == 2
+
+
+def test_examples_are_judged_on_what_they_add_beyond_the_headword():
+    def deck(extra: int):
+        rows = []
+        for i in range(60):
+            w = _word(i)
+            filler = " ".join(_word(1000 + i * 10 + k) for k in range(extra))
+            rows.append(([w, f"la casa e {w} {filler}".strip()], []))
+        return _simple_deck(rows, fields=("Word", "Example"))
+
+    clean = metrics.compute(deck(0), {1: 1}, lemma_fields={1: [0]})
+    noisy = metrics.compute(deck(2), {1: 1}, lemma_fields={1: [0]})
+    assert clean.headword_sentences == 60
+    # Only the very first example brings in more than its headword.
+    assert clean.i_plus_one_share == pytest.approx(59 / 60)
+    assert noisy.i_plus_one_share == 0
+    assert "headword is the card's one new item" in clean.format_line
+
+
+def test_a_word_list_says_its_rate_is_the_format():
+    rows = [([_word(i)], []) for i in range(200)]
+    m = metrics.compute(_simple_deck(rows), {1: 0})
+    assert m.entry_share == 1.0
+    assert m.i_plus_one_share is None
+    assert "i+1 at card level" in m.format_line
+    assert not m.curve_reads_sentences
+
+
+def test_the_curve_is_read_over_sentences_when_word_cards_dominate():
+    rows = []
+    for i in range(500):
+        if i % 5 == 0:
+            rows.append(([f"io vedo la {_word(i)} qui"], []))
+        else:
+            rows.append(([_word(i)], []))
+    m = metrics.compute(_simple_deck(rows), {1: 0})
+    assert m.entry_share == pytest.approx(0.8)
+    assert m.curve_reads_sentences
+    assert all(b.sentence_new_word_rate is not None for b in m.buckets)
+    assert "new-word rate in sentences" in m.curve_shape
+    assert "in sentences" in metrics.curve_table(m)
+
+
+def test_a_rising_opening_is_not_described_as_falling():
+    shape = _metrics_with_rates(
+        [0.40, 0.67, 0.70, 0.72, 0.70, 0.70, 0.71, 0.70, 0.70, 0.70]
+    ).curve_shape
+    assert "rises from 40.0%" in shape
+
+
+def _tagged_rows(order):
+    """Notes whose level is in their tag; `order` lists levels in default order."""
+    return [([f"{_word(i)}"], [f"d{lvl}", "noun"]) for i, lvl in enumerate(order)]
+
+
+def test_level_tags_are_detected_and_the_deck_reordered():
+    order = [3] * 30 + [1] * 10 + [4] * 10 + [2] * 10
+    deck = _simple_deck(_tagged_rows(order))
+    tags = levels.detect(deck)
+    assert tags is not None
+    assert tags.family == "d1-d4"
+    assert tags.levels == ["d1", "d2", "d3", "d4"]
+    assert tags.counts == {"d1": 10, "d2": 10, "d3": 30, "d4": 10}
+    assert not tags.follows_default_order
+    reordered = levels.in_tag_order(deck, tags)
+    assert [n.tags[0] for n in reordered.notes[:10]] == ["d1"] * 10
+    assert reordered.notes[-1].tags[0] == "d4"
+    assert "level-tag order" in reordered.order_basis
+    # The original deck is untouched.
+    assert deck.notes[0].tags[0] == "d3"
+
+
+def test_a_deck_already_in_level_order_is_measured_once():
+    deck = _simple_deck(_tagged_rows([1] * 20 + [2] * 20 + [3] * 20))
+    tags = levels.detect(deck)
+    assert tags.follows_default_order
+    m = metrics.compute(deck, {1: 0})
+    found, path = _study_path(deck, m, {1: 0})
+    assert found is tags or found.family == tags.family
+    assert path is None
+
+
+def test_cefr_jlpt_and_hierarchical_tags_rank_easiest_first():
+    assert levels._classify("Level::A2") == ("cefr", 1)
+    assert levels._classify("CEFR_B1") == ("cefr", 2)
+    assert levels._classify("JLPT_N5") == ("jlpt", 0)
+    assert levels._classify("N1") == ("jlpt", 4)
+    assert levels._classify("HSK3") == ("hsk", 3)
+    assert levels._classify("beginner") == ("words", 1)
+    assert levels._classify("lesson12") is None
+    assert levels._classify("noun") is None
+
+
+def test_sparse_level_tags_are_ignored():
+    order = [1] * 10 + [None] * 50
+    rows = [([_word(i)], [f"d{lvl}"] if lvl else []) for i, lvl in enumerate(order)]
+    assert levels.detect(_simple_deck(rows)) is None
+
+
+def test_the_pack_and_reports_show_the_study_path():
+    order = [3] * 30 + [1] * 10 + [4] * 10 + [2] * 10
+    deck = _simple_deck(_tagged_rows(order))
+    m = metrics.compute(deck, {1: 0})
+    tags, path = _study_path(deck, m, {1: 0})
+    assert path is not None
+    pack = build_pack(deck, m, DeckProfile(target_fields={1: 0}), tags=tags, path=path)
+    assert "### Study path by level tags" in pack
+    assert "[path #1]" in pack and "d1" in pack.split("### Study path by level tags")[1]
+
+    result = scoring.combine(_judgements(7), m, deck, DeckProfile(deck_kind="vocabulary list"))
+    md = report.render_markdown(deck, DeckProfile(), m, result, "model", study_path=path)
+    assert "lowest level first (d1-d4 tags)" in md
+    html_out = report.render_html(deck, DeckProfile(), m, result, "model", study_path=path)
+    assert "lowest level first" in html_out
+    payload = json.loads(
+        report.render_json(deck, DeckProfile(), m, result, "model", None, study_path=path)
+    )
+    assert payload["measurements"]["level_tags"]["family"] == "d1-d4"
+    assert payload["measurements"]["study_path"]["buckets"]
+    assert payload["score"]["scored_as"].startswith("Scored as a main course.")
+
+
+def test_supplements_are_named_but_scored_the_same():
+    assert "phrase book" in scoring.supplement_note("travel phrase book")
+    assert "word list" in scoring.supplement_note("Goethe A1 exam word list")
+    assert "drill" in scoring.supplement_note("conjugation drill")
+    assert scoring.supplement_note("sentence deck") == ""
+    # Whole words only.
+    assert scoring.supplement_note("TV transcript sentence deck") == ""
+    assert scoring.supplement_note("example-sentence course") == ""
+
+
+def test_character_counting_is_flagged_next_to_the_curve():
+    note = metrics.comparability_note(lx.Lexicon(language="zh", method=lx.METHOD_CHARACTER))
+    assert "can't be compared" in note
+    assert metrics.comparability_note(lx.Lexicon(language="fr")) == ""
+
+
+def test_three_digit_levels_need_a_level_word():
+    assert levels._classify("Level161") == ("level", 161)
+    assert levels._classify("d161") is None
+
+
+def test_many_levels_are_summarized_not_listed():
+    order = [lvl for lvl in range(120, 0, -1) for _ in range(2)]
+    rows = [([_word(i)], [f"Level{lvl}"]) for i, lvl in enumerate(order)]
+    tags = levels.detect(_simple_deck(rows))
+    assert tags.family == "Level1-Level120"
+    text = tags.describe()
+    assert "120 levels, Level1 to Level120" in text
+    assert text.count("%") < 15
+    assert tags.out_of_order == pytest.approx(1.0)
+
+
+def test_sentence_quality_leaves_position_to_progression():
+    rubric = criteria.BY_KEY["sentences"].rubric
+    assert "do not score its position here" in rubric
+    assert "5-6 problem" in rubric

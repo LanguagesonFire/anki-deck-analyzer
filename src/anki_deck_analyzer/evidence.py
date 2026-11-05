@@ -16,6 +16,7 @@ from .apkg import Deck, Note
 from . import frequency as fq
 from .lexicon import Lexicon
 from .metrics import CLOZE_MIN_LETTERS, Metrics, curve_table
+from . import levels
 from . import textutil as tx
 
 #: Fixed so that two runs of the same deck read the same cards. Recorded in
@@ -100,7 +101,10 @@ def first_seen_marks(
     count = lexicon.words if lexicon is not None else tx.words
     seen: set[str] = set()
     marks: dict[int, dict[int, tuple[int, int]]] = {}
+    last = max(sampled, default=-1)
     for index, note in enumerate(deck.notes):
+        if index > last:
+            break
         per_field = [set(count(tx.strip_html(raw))) for raw in note.fields]
         if index in sampled:
             marks[index] = {
@@ -368,13 +372,71 @@ def _explanation_lines(metrics: Metrics) -> list[str]:
     return lines
 
 
+#: Notes shown from the start of the level-tag study path.
+PATH_OPENING = 20
+
+
+def _study_path_text(tags: levels.LevelTags, path: levels.StudyPath | None) -> str:
+    """The deck read lowest level first, measured the same way as above."""
+    lines = [tags.describe()]
+    if path is None:
+        lines.append(
+            "Progression above is measured in that order already; nothing to add."
+        )
+        return "\n".join(lines)
+    m = path.metrics
+    lines += [
+        "Many decks tagged this way are meant to be studied level by level: the "
+        "learner suspends or filters the higher levels and works up. Below is the "
+        "deck measured in that order, lowest level first and the default order "
+        "within each level, with the same fields and the same word counting as "
+        "above. Judge which path the deck's own tags and identification notes "
+        "support, score progression on that path, and say which one you scored.",
+        "",
+        m.format_line,
+        "",
+        curve_table(m),
+    ]
+    if m.buckets and not m.lexicon.unsegmented:
+        lines += ["", m.curve_shape]
+    if m.frequency.available:
+        lines += [
+            "",
+            "Vocabulary against the same frequency list, along this path:",
+            fq.table(m.frequency),
+        ]
+    first = list(range(min(PATH_OPENING, len(path.deck.notes))))
+    marks = (
+        {} if m.lexicon.unsegmented
+        else first_seen_marks(path.deck, set(first), m.lexicon)
+    )
+    lines += [
+        "",
+        f"The first {len(first)} notes along this path. Positions are along the "
+        "path; first-seen marks count earlier notes on the path.",
+        "",
+        "\n\n".join(
+            render_note(path.deck, path.deck.notes[i], position=i + 1, marks=marks.get(i))
+            .replace(f"[#{i + 1}]", f"[path #{i + 1}]", 1)
+            for i in first
+        ),
+    ]
+    return "\n".join(lines)
+
+
 def build_pack(
     deck: Deck,
     metrics: Metrics,
     profile: DeckProfile,
     measured_fields: dict[int, int] | None = None,
+    tags: levels.LevelTags | None = None,
+    path: levels.StudyPath | None = None,
 ) -> str:
-    """The shared evidence block every criterion call reads."""
+    """The shared evidence block every criterion call reads.
+
+    `tags` are level tags found on the notes; `path` is the deck measured in
+    their order, when the default order ignores them.
+    """
     picks = sample_indices(len(deck.notes))
     sampled = {i for idxs in picks.values() for i in idxs}
     marks = (
@@ -439,10 +501,13 @@ def build_pack(
         _measured_fields_line(deck, profile, measured_fields),
         *_explanation_lines(metrics),
         "",
+        metrics.format_line,
+        "",
         "Progression curve — the deck split into ten equal parts in study order.",
         "'new-word rate' is the share of word tokens in that part that had not "
-        "appeared in any earlier note. '<=1 new word' is the share of notes in that "
-        "part introducing at most one unfamiliar word — the i+1 reading.",
+        "appeared in any earlier note; 'in sentences' is the same rate over the "
+        "sentence notes alone. '<=1 new word' is the share of sentence notes in "
+        "that part introducing at most one unfamiliar word — the i+1 reading.",
         "",
         curve_table(metrics),
     ]
@@ -464,6 +529,9 @@ def build_pack(
     for warning in metrics.warnings:
         measured += ["", f"Caveat: {warning}"]
     parts.append(_block("What was measured", "\n".join(measured)))
+
+    if tags is not None:
+        parts.append(_block("Study path by level tags", _study_path_text(tags, path)))
 
     # -- samples ----------------------------------------------------------
     labels = {
