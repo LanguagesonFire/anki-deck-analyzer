@@ -30,7 +30,7 @@ FILES = ["README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml",
 FOLDERS = ["src", "tests"]
 #: Maintainer tools: rebuild the shipped word-list patches and French list.
 SCRIPTS = ["scripts/clean_wordfreq.py", "scripts/build_lexique_list.py",
-           "scripts/make_release.py"]
+           "scripts/make_release.py", "scripts/make_outfit_font.py"]
 SKIP_PARTS = {"__pycache__", ".pytest_cache"}
 SKIP_SUFFIXES = {".pyc", ".pyo"}
 

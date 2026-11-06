@@ -2,6 +2,13 @@
 
 Every report prints the analyzer version it was made with. Compare two decks only on reports from the same version: the changes below move scores or measurements.
 
+## 1.8.2
+
+No score changes: a 1.8.2 report scores a deck exactly as 1.8.1 does.
+
+- HTML reports use the Outfit font, embedded in the file, so they look the same offline and open without contacting a font service. Characters outside Latin (Cyrillic, Greek, CJK) still show in the system font.
+- The footer and the Markdown report link to the article the weighting comes from, not to the site's homepage.
+
 ## 1.8.1
 
 The order a learner gets on opening the deck is the order that's scored.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import html
 import json
 import os
@@ -412,7 +413,7 @@ def render_markdown(
         "spread. They are one reading, not a measurement.",
         "- The weighting is the one published in "
         "[How to choose an Anki deck you'll actually use]"
-        "(https://languages-on-fire.com), and reflects one approach to language "
+        "(https://languages-on-fire.com/how-to-choose-an-anki-deck/), and reflects one approach to language "
         "learning rather than a validated formula.",
         "",
     ]
@@ -423,34 +424,52 @@ def render_markdown(
 # html
 # --------------------------------------------------------------------------
 
+#: The font is the Outfit the Languages on Fire site uses, a Latin subset embedded
+#: in the report (see scripts/make_outfit_font.py), so a report opened offline
+#: or passed along looks the same and makes no request to a font service.
+#: Characters outside the subset fall back to the system font one by one.
+_FONT_FILE = os.path.join(os.path.dirname(__file__), "data", "Outfit-latin.woff2")
+_SANS = "Outfit,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif"
+
+
+def _font_face() -> str:
+    try:
+        with open(_FONT_FILE, "rb") as fh:
+            data = base64.b64encode(fh.read()).decode("ascii")
+    except OSError:
+        return ""
+    return ("@font-face{font-family:Outfit;font-style:normal;font-weight:400 700;"
+            f"font-display:swap;src:url(data:font/woff2;base64,{data}) format('woff2')}}")
+
+
 _CSS = """
-:root{--bg:#fbfaf8;--fg:#1c1a18;--muted:#6b6560;--line:#e5e0d8;--card:#fff;
---good:#2f7d4f;--ok:#2b6a86;--warn:#9a6a10;--bad:#9d3535;--accent:#c1440e;
+:root{--bg:#fcfaf7;--fg:#1d1b1a;--muted:#5d5853;--line:#ece3d6;--card:#fff;
+--good:#2f7d4f;--ok:#2b6a86;--warn:#9a6a10;--bad:#9d3535;--accent:#fe540a;
 color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
---bg:#16150f;--fg:#ece7de;--muted:#9c958a;--line:#332f28;--card:#1e1c16;
+--bg:#1b1715;--fg:#ece7de;--muted:#a39b91;--line:#36302b;--card:#231e1b;
 --good:#6fbf8b;--ok:#6fb3cf;--warn:#d6a441;--bad:#e07a7a;--accent:#f0803c;
 color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);overflow-wrap:break-word;
-font:16px/1.6 ui-serif,Georgia,'Iowan Old Style',serif}
+font:16px/1.6 SANS}
 .wrap{max-width:820px;margin:0 auto;padding-block:48px 80px;padding-inline:16px;
 min-width:0}
 img{max-width:100%}
-h1{font-size:2rem;line-height:1.2;margin:0 0 .2em}
-h2{font-size:1.25rem;margin:2.4em 0 .6em;padding-bottom:.3em;
+a{color:inherit;text-decoration-color:var(--accent);text-underline-offset:2px}
+h1{font-size:2rem;line-height:1.2;margin:0 0 .2em;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.25rem;font-weight:600;margin:2.4em 0 .6em;padding-bottom:.3em;
 border-bottom:1px solid var(--line)}
-h3{font-size:1.02rem;margin:1.8em 0 .3em}
-.sub{color:var(--muted);font-size:.9rem;margin:0 0 2em;
-font-family:ui-sans-serif,system-ui,sans-serif}
+h3{font-size:1.02rem;font-weight:600;margin:1.8em 0 .3em}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 2em}
 .verdict{background:var(--card);border:1px solid var(--line);border-radius:10px;
 padding:22px 24px;margin:0 0 28px}
-.big{font-size:2.6rem;font-weight:700;line-height:1;font-family:ui-sans-serif,system-ui,sans-serif}
+.big{font-size:2.6rem;font-weight:700;line-height:1}
 .grade{font-size:1.05rem;color:var(--muted);margin-left:.5em}
 /* A table is the one thing allowed to be wider than the page, and only
    inside its own scroller, so the body itself never scrolls sideways. */
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{width:100%;border-collapse:collapse;font-family:ui-sans-serif,system-ui,sans-serif;
+table{width:100%;border-collapse:collapse;
 font-size:.9rem}
 th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;
@@ -471,20 +490,17 @@ min-width:80px}
 ul{padding-left:1.2em}li{margin:.3em 0}
 blockquote{margin:.7em 0;padding:.4em 0 .4em 1em;border-left:3px solid var(--line);
 color:var(--muted);font-size:.95rem}
-blockquote span{display:block;font-size:.8rem;margin-top:.3em;
-font-family:ui-sans-serif,system-ui,sans-serif}
+blockquote span{display:block;font-size:.8rem;margin-top:.3em}
 pre{overflow-x:auto;background:var(--card);border:1px solid var(--line);
 border-radius:8px;padding:14px;font-size:.78rem;line-height:1.5}
 .cols{display:flex;flex-wrap:wrap;gap:24px}
 .cols>div{flex:1 1 260px;min-width:0}
 blockquote,li,p,h1,h2,h3{min-width:0}
-.note{color:var(--muted);font-size:.85rem;
-font-family:ui-sans-serif,system-ui,sans-serif}
+.note{color:var(--muted);font-size:.85rem}
 .pill{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:99px;
-border:1px solid var(--line);color:var(--muted);margin-left:.4em;
-font-family:ui-sans-serif,system-ui,sans-serif;vertical-align:1px}
+border:1px solid var(--line);color:var(--muted);margin-left:.4em;vertical-align:1px}
 footer{margin-top:3em;padding-top:1.2em;border-top:1px solid var(--line)}
-"""
+""".replace("SANS", _SANS)
 
 
 def _today() -> str:
@@ -729,14 +745,14 @@ def render_html(
         "<footer><h3>How to read this</h3><ul>"
         + "".join(f'<li class="note">{c}</li>' for c in caveats)
         + "</ul><p class=\"note\">Scored with the Anki Deck Analyzer, against the "
-        "framework in “How to choose an Anki deck you’ll actually use”.</p></footer>"
+        "framework in <a href=\"https://languages-on-fire.com/how-to-choose-an-anki-deck/\">How to choose an Anki deck you’ll actually use</a> by Languages on Fire.</p></footer>"
     )
 
     return (
         f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         f'<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_e(deck.name)} — deck analysis</title>"
-        f"<style>{_CSS}</style></head><body><div class=\"wrap\">"
+        f"<style>{_font_face()}{_CSS}</style></head><body><div class=\"wrap\">"
         + "\n".join(parts)
         + "</div></body></html>"
     )
