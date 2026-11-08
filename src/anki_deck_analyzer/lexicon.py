@@ -221,6 +221,9 @@ class Lexicon:
     #: next space or punctuation mark, often a whole phrase. The curve and the
     #: first-seen marks are withheld for such a deck rather than shown wrong.
     unsegmented: bool = False
+    #: Chinese or Japanese split into words (`textutil.segment`), with a
+    #: splitter installed. Without one, those decks are counted per character.
+    segmented: bool = False
     _lemma = None
     _cache: dict = field(default_factory=dict)
 
@@ -232,6 +235,8 @@ class Lexicon:
             return []
         if self.method == METHOD_CHARACTER:
             return tx.words(text, self.language)
+        if self.segmented:
+            return [base for _, base in tx.segment(text, self.language)]
         out: list[str] = []
         for token in self.split(text):
             if token in self.names:
@@ -241,6 +246,8 @@ class Lexicon:
 
     def split(self, text: str) -> list[str]:
         """Lowercased surface tokens, with elisions split in dictionary mode."""
+        if self.segmented:
+            return [surface for surface, _ in tx.segment(text, self.language)]
         toks = tx.words(text, self.language)
         if self.method != METHOD_LEMMA:
             return toks
@@ -315,6 +322,18 @@ class Lexicon:
 
     def describe(self) -> str:
         """One line naming the counting method, for every report format."""
+        if self.segmented and self.language == "zh":
+            return (
+                "Words are split with jieba, on wordfreq's dictionary, and "
+                "Traditional characters are read as Simplified; names are not "
+                "detected, so they count as vocabulary."
+            )
+        if self.segmented:
+            return (
+                "Words are split with Janome and counted by dictionary form, so a "
+                "particle or an ending such as ます counts as a word of its own; "
+                "personal names are left out where Janome recognizes them."
+            )
         if self.unsegmented:
             return (
                 "This script is written without spaces between words, and the tool "
@@ -373,6 +392,8 @@ class Lexicon:
     @property
     def label(self) -> str:
         """Short tag stored in provenance: 'lemma:simplemma 1.1.2', 'surface'."""
+        if self.segmented:
+            return f"words:{self.tool}"
         if self.method == METHOD_LEMMA:
             return f"lemma:{self.tool}"
         return self.method
@@ -463,6 +484,21 @@ def find_names(
     return frozenset(w for w in capital_inside - lowercase if not verb_with_pronoun(w))
 
 
+def _word_splitting(code: str | None, language_name: str | None) -> Lexicon | None:
+    """A word-splitting Lexicon for Mandarin or Japanese, None when the
+    language has none or its splitter isn't installed. Cantonese is written
+    with the same characters, but jieba's dictionary is Mandarin."""
+    if code not in ("zh", "ja") or "cantonese" in (language_name or "").lower():
+        return None
+    tool = tx.cjk_splitter(code)
+    if not tool:
+        return None
+    lex = Lexicon(language=code, method=METHOD_LEMMA, tool=tool, segmented=True)
+    if code == "ja":
+        lex._lemma = tx.japanese_base
+    return lex
+
+
 def build(
     texts: list[str],
     language_name: str | None = None,
@@ -478,7 +514,9 @@ def build(
     code = language_code(language_name)
     sample = " ".join(texts[:400])
     if _is_cjk_text(sample) or code in ("zh", "ja"):
-        return Lexicon(language=code, method=METHOD_CHARACTER)
+        return _word_splitting(code, language_name) or Lexicon(
+            language=code, method=METHOD_CHARACTER
+        )
 
     unsegmented = _is_unsegmented_text(sample)
     names = find_names(texts, code, companions, elsewhere)

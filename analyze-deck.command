@@ -23,7 +23,7 @@ if [ "$HAVE" != "$WANT" ]; then
   [ -x .venv/bin/python ] || python3 -m venv .venv \
     || { echo "Could not create the environment."; pause_close; exit 1; }
   ./.venv/bin/python -m pip install --quiet --upgrade pip
-  if ! ./.venv/bin/python -m pip install --quiet ".[lemma]"; then
+  if ! ./.venv/bin/python -m pip install --quiet ".[lemma,chinese,japanese]"; then
     echo
     echo "The install failed. Check the internet connection and run this again."
     echo "If it keeps failing, delete the .venv folder here and try once more."

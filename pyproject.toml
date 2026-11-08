@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anki-deck-analyzer"
-version = "1.8.2"
+version = "1.9.0"
 description = "Score an Anki language deck against nine published quality criteria."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -40,6 +40,11 @@ lemma = [
 # Korean: split text into morphemes the way wordfreq's Korean list is, so the
 # deck can be compared with it. Has wheels for Windows, macOS and Linux.
 korean = ["kiwipiepy>=0.17"]
+# Chinese and Japanese: split text into words for the frequency comparison.
+# Without them those decks get no frequency table. Janome is pure Python and
+# reads the IPA dictionary wordfreq's Japanese list was built with.
+chinese = ["jieba>=0.42"]
+japanese = ["janome>=0.5"]
 
 [project.urls]
 Homepage = "https://languages-on-fire.com"

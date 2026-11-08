@@ -227,6 +227,40 @@ def _own_script_only(words: list[str]) -> tuple[list[str], int]:
     return kept, len(words) - len(kept)
 
 
+def _character_reason(lex: Lexicon, language_name: str) -> str:
+    """Why a deck counted per character gets no frequency table."""
+    base = "the deck is counted per character and the frequency lists are per word"
+    if "cantonese" in language_name.lower():
+        return (
+            "the Chinese frequency list is built from Mandarin text, so it says "
+            "little about a Cantonese deck"
+        )
+    if lex.language in ("zh", "ja"):
+        package = "jieba" if lex.language == "zh" else "janome"
+        return f"{base}, and matching them needs a word splitter: pip install {package}"
+    return f"{base}, so the two cannot be matched"
+
+
+def _segmented_notes(lex: Lexicon) -> list[str]:
+    if not lex.segmented:
+        return []
+    if lex.language == "zh":
+        return [
+            "The deck is split into words with jieba on wordfreq's own "
+            "dictionary, and Traditional characters are read as Simplified. "
+            "Names are not detected, so they count on both sides. Compare these "
+            "figures only with Chinese decks split the same way."
+        ]
+    return [
+        "The deck is split into words with Janome on the IPA dictionary the "
+        "list was built with, and inflected forms are folded into dictionary "
+        "forms. Personal names are left out of the deck's words but stay on the "
+        "list. A kana entry counts as taught when the deck writes that word in "
+        "kanji (分かる for わかる), but not the other way around. Compare these "
+        "figures only with Japanese decks split the same way."
+    ]
+
+
 def _wordfreq_list(
     lex: Lexicon, language_name: str, raw: bool = False
 ) -> tuple[FrequencyList | None, str]:
@@ -248,7 +282,20 @@ def _wordfreq_list(
         from .wordfreq_patch import cleaned
 
         patched, why_raw = cleaned(lex.language, version)
-        if patched is None:
+        if patched is None and lex.segmented:
+            # Not _own_script_only: Japanese mixes kanji, hiragana and
+            # katakana, and that would keep only the most common of the three.
+            words = [
+                w
+                for w in words
+                if any(tx.is_cjk_char(c) for c in w)
+                and not (lex.language == "ja" and tx.japanese_fragment(w))
+            ]
+            notes.append(
+                "wordfreq is used raw, without a cleaning pass: names and web "
+                "noise stay on the list."
+            )
+        elif patched is None:
             words, n_foreign = _own_script_only(words)
             notes.append(
                 f"wordfreq is used raw: {why_raw}. Misspellings and junk on the "
@@ -310,9 +357,13 @@ def _wordfreq_list(
     return (
         FrequencyList(
             source=f"wordfreq {version}, {label}, {language} list",
-            unit="dictionary forms" if lex.method == METHOD_LEMMA else "word forms",
+            unit=(
+                "words"
+                if lang == "zh" and lex.segmented
+                else "dictionary forms" if lex.method == METHOD_LEMMA else "word forms"
+            ),
             entries=[(heads[k], frozenset(keys[k])) for k in order],
-            notes=notes,
+            notes=notes + _segmented_notes(lex),
         ),
         "",
     )
@@ -410,10 +461,7 @@ def load_list(
     "wordfreq" (cleaned where a patch exists), "wordfreq-raw", "lexique", or
     a file path."""
     if lex.method == METHOD_CHARACTER:
-        return None, (
-            "the deck is counted per character and the frequency lists are per "
-            "word, so the two cannot be matched"
-        )
+        return None, _character_reason(lex, language_name)
     if not spec or spec in (WORDFREQ_LIST, RAW_LIST, LEXIQUE_LIST):
         if not lex.language:
             return None, "the target language was not identified"
@@ -482,6 +530,12 @@ def deck_keys(lex: Lexicon, text: str, skip=None) -> list[tuple[str, str]]:
     is matched through `_fold(spelling, lex.language)`; the key is already
     matchable.
     """
+    if lex.segmented:
+        return [
+            (_fold(base), _fold(surface))
+            for surface, base in tx.segment(text, lex.language)
+            if skip is None or not skip(surface)
+        ]
     clitics = ELIDED_CLITICS.get(lex.language or "", set())
     out: list[tuple[str, str]] = []
     for tok in tx.words(text, lex.language):
@@ -509,6 +563,13 @@ def _forms_seen(lex: Lexicon, text: str, skip=None) -> set[str]:
     """Every key under which a list entry could find this text's words: whole
     tokens ("jusqu'à", "d'accord"), split pieces with and without their
     apostrophe, and dictionary forms."""
+    if lex.segmented:
+        return {
+            _fold(form)
+            for surface, base in tx.segment(text, lex.language)
+            if skip is None or not skip(surface)
+            for form in (surface, base)
+        } | tx.kana_spellings(text, lex.language)
     out: set[str] = set()
     for tok in tx.words(text, lex.language):
         if tok in lex.names:
@@ -710,7 +771,12 @@ def compute(
     # Their words are not vocabulary the deck teaches, and on the target list
     # they show up as rare words. A word is set aside when it is far more
     # common in the explanation language than in the target language.
-    skip = explanation_filter(lex, explanation_language)
+    # Split Chinese and Japanese have no such words: the splitter keeps only
+    # text in their own scripts.
+    skip = None if lex.segmented else explanation_filter(lex, explanation_language)
+    # Most Chinese words are two characters, so the usual "longer than two"
+    # would keep nearly all of them from being flagged.
+    rare_min_length = 2 if lex.segmented else 3
 
     lang = lex.language
     total = len(texts) or 1
@@ -844,7 +910,7 @@ def compute(
             if (
                 r is not None
                 and r > limit
-                and len(key) > 2
+                and len(key) >= rare_min_length
                 and not (skip and skip.leans(spelling.get(key, key).rstrip("'")))
             ):
                 flagged.append(

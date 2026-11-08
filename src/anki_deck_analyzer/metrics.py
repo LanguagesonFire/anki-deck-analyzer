@@ -344,12 +344,12 @@ def card_new_items(new: Iterable[str], headword: set[str], seen: set[str]) -> in
 def _target_text(note: Note, target_field_index: int | None) -> str:
     """The target-language text of a note, as plain text."""
     if target_field_index is not None and 0 <= target_field_index < len(note.fields):
-        text = tx.strip_html(note.fields[target_field_index])
+        text = tx.measured_text(note.fields[target_field_index])
         if text:
             return text
     # Fall back to the longest field, which on a sentence card is almost always
     # the sentence and on a vocabulary card the word plus its context.
-    candidates = [tx.strip_html(f) for f in note.fields]
+    candidates = [tx.measured_text(f) for f in note.fields]
     return max(candidates, key=len) if candidates else ""
 
 
@@ -1033,6 +1033,12 @@ def curve_table(metrics: Metrics) -> str:
 
 def comparability_note(lexicon: lx.Lexicon) -> str:
     """Said next to the curve when its figures don't compare with word counts."""
+    if lexicon.segmented:
+        return (
+            f"Split into words with {lexicon.tool}, where one word is often a "
+            "single particle or ending: compare this curve only with decks in "
+            "the same language measured the same way."
+        )
     if lexicon.method == lx.METHOD_CHARACTER:
         return (
             "Counted per character, not per word: this curve and its i+1 share "

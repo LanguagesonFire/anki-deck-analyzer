@@ -1058,7 +1058,8 @@ def test_without_a_lemmatizer_words_are_counted_by_spelling():
     assert lex.label == "surface"
 
 
-def test_cjk_keeps_per_character_counting():
+def test_cjk_counts_characters_without_a_splitter(monkeypatch):
+    monkeypatch.setitem(tx._SPLITTERS, "zh", {})
     lex = lx.build(["我是学生。", "你是老师。"], "Chinese")
     assert lex.method == lx.METHOD_CHARACTER
     assert lex.words("我是") == ["我", "是"]
@@ -2320,3 +2321,109 @@ def test_a_description_reaches_the_reproduce_command():
     p = Provenance("1.8.1", "claude-sonnet-5-5", "medium", 1, 7, "x", [], True,
                    description_given=True)
     assert "--description" in p.command()
+
+
+# -- Chinese and Japanese: words for the frequency comparison only -----------
+
+
+@pytest.mark.skipif(not _has("jieba"), reason="jieba not installed")
+def test_chinese_curve_and_frequency_both_count_words():
+    texts = ["我们要努力学习。", "今天太热了。"]
+    lex = lx.build(texts, "Chinese")
+    assert lex.segmented and lex.label == "words:jieba"
+    assert "学习" in lex.words(texts[0]) and "习" not in lex.words(texts[0])
+    profile = fq.compute(lex, texts, [(1, 0, 2)], "Chinese")
+    assert profile.available and profile.unit == "words"
+    assert profile.coverage[1000][0] > 0
+
+
+@pytest.mark.skipif(not _has("jieba"), reason="jieba not installed")
+def test_chinese_phrases_are_read_as_the_words_inside_them():
+    words = [s for s, _ in tx.segment("努力学习，今天太热。", "zh")]
+    assert "努力" in words and "学习" in words and "努力学习" not in words
+    assert "太" in words and "热" in words
+
+
+def test_a_rare_token_with_an_unlisted_piece_stays_whole():
+    assert tx._chinese_parts("甲乙", {"甲": 1}) == ["甲乙"]
+    rank = {"甲": 1, "乙": 2, "甲乙": tx.CHINESE_PHRASE_RANK + 1}
+    assert tx._chinese_parts("甲乙", rank) == ["甲", "乙"]
+    rank["甲乙"] = tx.CHINESE_PHRASE_RANK
+    assert tx._chinese_parts("甲乙", rank) == ["甲乙"]
+
+
+@pytest.mark.skipif(not _has("jieba"), reason="jieba not installed")
+def test_traditional_chinese_is_read_as_simplified():
+    assert ("学习", "学习") in tx.segment("學習", "zh")
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_japanese_stems_take_their_dictionary_form_from_context():
+    assert ("見", "見る") in tx.segment("映画を見ました。", "ja")
+    assert tx.japanese_base("守ら") == "守る"
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_japanese_furigana_does_not_split_words():
+    words = [s for s, _ in tx.segment(" 勉[べん] 強[きょう]します", "ja")]
+    assert "勉強" in words and "べん" not in words
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_japanese_list_keeps_all_three_scripts():
+    lex = lx.build(["私は学校へ行きます。"], "Japanese")
+    profile = fq.compute(lex, ["私は学校へ行きます。"], [(1, 0, 1)], "Japanese")
+    assert profile.available and profile.unit == "dictionary forms"
+    assert profile.list_size > 30_000
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_english_in_a_japanese_field_is_not_vocabulary():
+    assert tx.segment("hello world", "ja") == ()
+
+
+def test_cantonese_is_not_held_against_the_mandarin_list():
+    lex = lx.build(["我係學生。"], "Cantonese")
+    profile = fq.compute(lex, ["我係學生。"], [(1, 0, 1)], "Cantonese")
+    assert not profile.available and "Mandarin" in profile.reason
+
+
+def test_chinese_without_a_splitter_says_what_to_install(monkeypatch):
+    monkeypatch.setitem(tx._SPLITTERS, "zh", {})
+    lex = lx.build(["我是学生。"], "Chinese")
+    profile = fq.compute(lex, ["我是学生。"], [(1, 0, 1)], "Chinese")
+    assert not profile.available and "pip install jieba" in profile.reason
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_japanese_curve_counts_dictionary_forms():
+    lex = lx.build(["映画を見ました。"], "Japanese")
+    assert lex.segmented and "見る" in lex.words("映画を見ました。")
+    assert "Janome" in metrics.comparability_note(lex)
+    assert "Janome" in lex.describe() and "per character" not in lex.describe()
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_japanese_personal_names_are_not_vocabulary():
+    assert "田中" not in [s for s, _ in tx.segment("田中さんは学校へ行きます。", "ja")]
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_kanji_word_teaches_its_kana_spelling_but_not_short_readings():
+    assert "わかる" in tx.kana_spellings("分かる", "ja")
+    assert "て" not in tx.kana_spellings("手を洗う", "ja")
+    assert tx.kana_spellings("わかる", "ja") == set()
+
+
+@pytest.mark.skipif(not _has("janome"), reason="janome not installed")
+def test_list_fragments_go_and_particles_stay():
+    for junk in ("ー", "ノ", "ら"):
+        assert tx.japanese_fragment(junk)
+    for word in ("の", "ば", "し", "学校"):
+        assert not tx.japanese_fragment(word)
+
+
+def test_ruby_readings_are_not_measured():
+    raw = "<ruby>漢<rt>かん</rt></ruby><ruby>字<rp>(</rp><rt>じ</ruby>です"
+    assert tx.measured_text(raw) == "漢字です"
+    assert "かん" in tx.strip_html(raw)  # the judge still sees the reading

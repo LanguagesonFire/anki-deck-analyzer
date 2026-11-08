@@ -105,7 +105,7 @@ def first_seen_marks(
     for index, note in enumerate(deck.notes):
         if index > last:
             break
-        per_field = [set(count(tx.strip_html(raw))) for raw in note.fields]
+        per_field = [set(count(tx.measured_text(raw))) for raw in note.fields]
         if index in sampled:
             marks[index] = {
                 i: (len(toks - seen), len(toks))

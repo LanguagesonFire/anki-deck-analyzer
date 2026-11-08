@@ -2,6 +2,17 @@
 
 Every report prints the analyzer version it was made with. Compare two decks only on reports from the same version: the changes below move scores or measurements.
 
+## 1.9.0
+
+Chinese and Japanese decks are measured in words and get a frequency table. Their progression and vocabulary scores can move, so don't compare them with reports from earlier versions. Other languages are unaffected, apart from any field that uses `<ruby>` readings.
+
+- With jieba (Chinese) or Janome (Japanese), which the launchers now install, the curve and the frequency table count words. Counting characters made a new word built from familiar characters look like nothing new. It remains the fallback without a splitter.
+- Japanese is counted by dictionary form on both the list and the deck, with Anki furigana removed first. Personal names are left out of the deck's words where Janome recognizes them, and single-kana splitting leftovers such as ー and ノ are off the list.
+- A kana entry on the Japanese list counts as taught when the deck writes that word in kanji.
+- Chinese words past rank 20,000 that split into listed words are read as those words, because wordfreq's dictionary holds whole phrases there.
+- Readings in `<ruby>` markup are no longer counted as text.
+- Cantonese decks stay on character counting and get no table: the Chinese list is built from Mandarin text.
+
 ## 1.8.2
 
 No score changes: a 1.8.2 report scores a deck exactly as 1.8.1 does.

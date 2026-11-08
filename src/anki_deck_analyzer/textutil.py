@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 import unicodedata
+from functools import lru_cache
 
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
 IMG_RE = re.compile(r"""<img\b[^>]*?\bsrc\s*=\s*["']?([^"'>\s]+)""", re.I)
@@ -239,6 +240,21 @@ def strip_html(raw: str, keep_cloze_text: bool = True) -> str:
     return "\n".join(line.strip() for line in text.split("\n")).strip()
 
 
+#: The reading of a <ruby> annotation, closed or left open as HTML allows.
+_RUBY_READING_RE = re.compile(
+    r"<r[tp]\b[^>]*>.*?(?:</r[tp]\s*>|(?=</ruby\s*>|<r[tpb]\b))", re.I | re.S
+)
+#: Taken out with no gap, or per-kanji ruby would cut one word into pieces.
+_RUBY_TAG_RE = re.compile(r"</?(?:ruby|rb)\b[^>]*>", re.I)
+
+
+def measured_text(raw: str) -> str:
+    """Field text as it is counted: `strip_html` without ruby readings, which
+    would otherwise count as vocabulary of their own. The judge still gets
+    them, through `strip_html`."""
+    return strip_html(_RUBY_TAG_RE.sub("", _RUBY_READING_RE.sub("", raw or "")))
+
+
 def _emphasis_marker(m: re.Match) -> str:
     """Mark the emphasised word, not the whitespace around it.
 
@@ -417,6 +433,169 @@ _JAMO_ONLY_RE = re.compile(r"[ᄀ-ᇿ㄰-㆏]+")
 
 def _ko_tokenize(text: str) -> list[str]:
     return [w for w in _KO_STATE["fn"](text) if not _JAMO_ONLY_RE.fullmatch(w)]
+
+
+# -- Chinese and Japanese word splitting -----------------------------------
+#
+# The curve and the frequency comparison both count these words. Characters
+# are only the fallback when no splitter is installed: counted that way, a new
+# word built from familiar characters looks like nothing new, and most kana
+# are familiar after a few cards.
+
+#: Anki's furigana: "食[た]べる", and per kanji " 勉[べん] 強[きょう]". The space
+#: only marks where the reading starts and is never rendered, so it goes too;
+#: left in, it would cut 勉強 into two words.
+_FURIGANA_RE = re.compile(r"[ \t]*([^\s\[\]]+)\[[^\]\n]*\]")
+_SPLITTERS: dict = {}
+#: Past this rank wordfreq's Chinese dictionary holds whole phrases: 努力学习,
+#: 太热, 喝啤酒. Taken as one token they hide the common words inside them.
+CHINESE_PHRASE_RANK = 20_000
+
+
+def _chinese_parts(word: str, rank: dict[str, int]) -> list[str]:
+    """`word`, or the words it is made of when it ranks past
+    CHINESE_PHRASE_RANK or is off the list and every piece is on it. Pieces
+    are taken longest first from the left."""
+    if len(word) < 2 or rank.get(word, len(rank) + 1) <= CHINESE_PHRASE_RANK:
+        return [word]
+    parts: list[str] = []
+    i = 0
+    while i < len(word):
+        for j in range(len(word), i, -1):
+            piece = word[i:j]
+            if piece != word and piece in rank:
+                parts.append(piece)
+                i = j
+                break
+        else:
+            return [word]
+    return parts
+
+
+def _load_splitter(lang: str | None) -> dict:
+    if lang not in _SPLITTERS:
+        state: dict = {}
+        try:
+            if lang == "zh":
+                import logging
+
+                import jieba  # type: ignore
+                from wordfreq import lossy_tokenize, top_n_list  # type: ignore
+
+                jieba.setLogLevel(logging.ERROR)
+                lossy_tokenize("学校", "zh")
+                rank = {w: i for i, w in enumerate(top_n_list("zh", 50_000), start=1)}
+                # wordfreq's own route: jieba on wordfreq's dictionary, and
+                # Traditional read as Simplified, as the list is stored.
+                state = {
+                    "tool": "jieba",
+                    "fn": lambda t: [
+                        (part, part, "")
+                        for w in lossy_tokenize(t, "zh")
+                        for part in _chinese_parts(w, rank)
+                    ],
+                }
+            elif lang == "ja":
+                from janome.tokenizer import Tokenizer  # type: ignore
+
+                tokenizer = Tokenizer()
+
+                def japanese(text: str) -> list[tuple[str, str, str]]:
+                    text = unicodedata.normalize("NFKC", _FURIGANA_RE.sub(r"\1", text))
+                    return [
+                        (
+                            t.surface,
+                            t.surface if t.base_form == "*" else t.base_form,
+                            "" if t.reading == "*" else t.reading,
+                        )
+                        for line in text.split("\n")
+                        for t in tokenizer.tokenize(line)
+                        if not t.part_of_speech.startswith("記号")
+                        # One character is left in: 姫 is tagged as a name.
+                        and not (
+                            t.part_of_speech.startswith("名詞,固有名詞,人名")
+                            and len(t.surface) >= 2
+                        )
+                    ]
+
+                state = {"tool": "Janome", "fn": japanese, "raw": tokenizer}
+        except Exception:
+            state = {}
+        _SPLITTERS[lang] = state
+    return _SPLITTERS[lang]
+
+
+def cjk_splitter(lang: str | None) -> str:
+    """"jieba" or "Janome" when `lang` can be split into words here, else ""."""
+    return _load_splitter(lang).get("tool", "")
+
+
+@lru_cache(maxsize=200_000)
+def _analyzed(text: str, lang: str | None) -> tuple[tuple[str, str, str], ...]:
+    fn = _load_splitter(lang).get("fn")
+    if fn is None or not text:
+        return ()
+    return tuple(t for t in fn(text) if any(is_cjk_char(c) for c in t[0]))
+
+
+def segment(text: str, lang: str | None) -> tuple[tuple[str, str], ...]:
+    """(spelling, dictionary form) of each Chinese or Japanese word in `text`.
+
+    Anything without a Chinese character or kana is left out: the English of
+    a mixed field and pinyin are not vocabulary this comparison can use. The
+    dictionary form is read in context, which is the only way to tell that
+    the 見 of 見ました is 見る. Japanese personal names are left out too.
+    """
+    return tuple((s, b) for s, b, _ in _analyzed(text, lang))
+
+
+_TO_HIRAGANA = str.maketrans({chr(c): chr(c - 0x60) for c in range(0x30A1, 0x30F7)})
+
+
+def kana_spellings(text: str, lang: str | None) -> set[str]:
+    """The kana spelling of each word `text` writes with kanji: 分かる also
+    teaches the list's わかる. One-kana readings are left out, since 手 and
+    the particle て are not the same word."""
+    return {
+        kana
+        for surface, _, reading in _analyzed(text, lang)
+        if any(0x3400 <= ord(c) <= 0x9FFF for c in surface)
+        and len(kana := reading.translate(_TO_HIRAGANA)) >= 2
+    }
+
+
+#: Tagged as a noun alone, but the everyday conditional particle.
+_JAPANESE_REAL_SINGLES = {"ば"}
+
+
+def japanese_fragment(word: str) -> bool:
+    """A single kana on the list that is a splitting leftover, not a word: ー,
+    ノ, ら, the dakuten mark. Particles and auxiliaries stay, as do verb
+    pieces such as し, which fold into their verbs."""
+    if len(word) != 1 or not 0x3040 <= ord(word) <= 0x30FF or word in _JAPANESE_REAL_SINGLES:
+        return False
+    if ord(word) >= 0x30A0:  # katakana and its marks
+        return True
+    raw = _load_splitter("ja").get("raw")
+    tokens = list(raw.tokenize(word)) if raw is not None else []
+    return bool(tokens) and tokens[0].part_of_speech.split(",")[0] in (
+        "名詞",
+        "記号",
+        "その他",
+        "形容詞",
+    )
+
+
+def japanese_base(word: str) -> str:
+    """The dictionary form of a word on its own, for the frequency list: 守ら
+    is 守る. A fragment that doesn't read as one word stays as it is."""
+    raw = _load_splitter("ja").get("raw")
+    if raw is None:
+        return word
+    tokens = list(raw.tokenize(word))
+    if len(tokens) != 1 or tokens[0].base_form == "*":
+        return word
+    return tokens[0].base_form
 
 
 def words(text: str, lang: str | None = None) -> list[str]:
