@@ -2427,3 +2427,83 @@ def test_ruby_readings_are_not_measured():
     raw = "<ruby>漢<rt>かん</rt></ruby><ruby>字<rp>(</rp><rt>じ</ruby>です"
     assert tx.measured_text(raw) == "漢字です"
     assert "かん" in tx.strip_html(raw)  # the judge still sees the reading
+
+
+def _addon_setup(monkeypatch, language="ko", tty=True, typed="y"):
+    from anki_deck_analyzer import addons
+
+    monkeypatch.setattr(addons, "_asked", set())
+    state = {"present": False, "pip": []}
+    monkeypatch.setattr(addons, "_present", lambda code: state["present"])
+
+    def fake_run(cmd, check=False):
+        state["pip"].append(cmd)
+        state["present"] = True
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(addons.subprocess, "run", fake_run)
+    monkeypatch.setattr(addons.sys, "stdin", types.SimpleNamespace(isatty=lambda: tty))
+    monkeypatch.setattr("builtins.input", lambda: typed)
+    return addons, state
+
+
+def test_addon_is_installed_when_the_person_says_yes(monkeypatch):
+    addons, state = _addon_setup(monkeypatch)
+    assert addons.offer("Korean") is True
+    assert "kiwipiepy>=0.17" in state["pip"][0]
+
+
+def test_addon_enter_means_yes(monkeypatch):
+    addons, state = _addon_setup(monkeypatch, typed="")
+    assert addons.offer("Japanese") is True
+    assert "janome>=0.5" in state["pip"][0]
+
+
+def test_addon_no_means_no(monkeypatch):
+    addons, state = _addon_setup(monkeypatch, typed="n")
+    assert addons.offer("Korean") is False and not state["pip"]
+
+
+def test_addon_never_installs_in_an_automated_run(monkeypatch):
+    addons, state = _addon_setup(monkeypatch, tty=False)
+    assert addons.offer("Chinese") is False and not state["pip"]
+
+
+def test_addon_asks_once_per_run(monkeypatch):
+    addons, state = _addon_setup(monkeypatch, typed="n")
+    addons.offer("Korean")
+    monkeypatch.setattr("builtins.input", lambda: pytest.fail("asked twice"))
+    assert addons.offer("Korean") is False
+
+
+def test_addon_is_not_offered_where_it_would_not_be_used(monkeypatch):
+    addons, state = _addon_setup(monkeypatch)
+    for language in ("French", "Cantonese", "unknown", None):
+        assert addons.offer(language) is False
+    assert not state["pip"]
+
+
+def test_addon_not_offered_when_already_there(monkeypatch):
+    addons, state = _addon_setup(monkeypatch)
+    state["present"] = True
+    assert addons.offer("Korean") is False and not state["pip"]
+
+
+def test_addon_failure_does_not_stop_the_run(monkeypatch):
+    addons, state = _addon_setup(monkeypatch)
+
+    def broken(cmd, check=False):
+        return types.SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(addons.subprocess, "run", broken)
+    assert addons.offer("Korean") is False
+
+
+def test_addon_requirements_match_pyproject():
+    from anki_deck_analyzer import addons
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "pyproject.toml"), encoding="utf-8") as handle:
+        text = handle.read()
+    for addon in addons.ADDONS.values():
+        assert f'{addon.extra} = ["{addon.requirement}"]' in text

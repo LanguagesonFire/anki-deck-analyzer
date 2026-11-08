@@ -2,6 +2,12 @@
 
 Every report prints the analyzer version it was made with. Compare two decks only on reports from the same version: the changes below move scores or measurements.
 
+## 1.9.1
+
+No score changes: a 1.9.1 report scores a deck exactly as 1.9.0 does when the same word splitter is installed.
+
+- The standard setup no longer includes the word splitters for Chinese and Japanese, and Korean is now offered as well. When a deck in one of those languages comes up, the tool asks once whether to install its splitter, before the deck is measured and scored. Say no, or run it unattended, and the report says what it had to leave out, as before.
+
 ## 1.9.0
 
 Chinese and Japanese decks are measured in words and get a frequency table. Their progression and vocabulary scores can move, so don't compare them with reports from earlier versions. Other languages are unaffected, apart from any field that uses `<ruby>` readings.

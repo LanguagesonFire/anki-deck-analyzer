@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 
-from . import __version__
+from . import __version__, addons
 from .analyze import analyze, preview
 from .apkg import DeckReadError
 from .criteria import CRITERIA
@@ -250,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  … {message}", file=sys.stderr, flush=True)
 
     if args.dry_run:
+        addons.offer(args.language, quiet=args.quiet)
         for path in args.deck:
             try:
                 deck, metrics, pack = preview(
@@ -298,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
                 repeat=max(1, args.repeat),
                 frequency_list=args.frequency_list,
                 description=_description(args.description),
+                on_language=lambda name: addons.offer(name, quiet=args.quiet),
             )
         except DeckReadError as exc:
             print(f"error: {os.path.basename(path)}: {exc}", file=sys.stderr)

@@ -32,7 +32,7 @@ if not "%HAVE%"=="%WANT%" (
     %PY% -m venv .venv || (echo Could not create the environment. & pause & exit /b 1)
   )
   ".venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
-  ".venv\Scripts\python.exe" -m pip install --quiet ".[lemma,chinese,japanese]"
+  ".venv\Scripts\python.exe" -m pip install --quiet ".[lemma]"
   if errorlevel 1 (
     echo.
     echo The install failed. Check the internet connection and run this again.

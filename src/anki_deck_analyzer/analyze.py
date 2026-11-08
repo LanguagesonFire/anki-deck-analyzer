@@ -84,11 +84,14 @@ def analyze(
     repeat: int = 1,
     frequency_list: str | None = None,
     description: str = "",
+    on_language=None,
 ) -> Analysis:
     """Read, measure, judge and score one deck.
 
     `progress` is called with a short status string at each step.
     `description` is the shared-deck page text, which the file doesn't carry.
+    `on_language` is called with the deck's language once it's known, before
+    the deck is measured and before the costly judging calls.
     """
 
     def say(message: str) -> None:
@@ -100,6 +103,8 @@ def analyze(
 
     say(f"Identifying {len(deck.notes):,} notes")
     profile = analyzer.profile(deck)
+    if on_language:
+        on_language(profile.target_language)
 
     say(f"Measuring the deck ({profile.target_language})")
     # Progression is a property of the sentences a learner meets, so a note

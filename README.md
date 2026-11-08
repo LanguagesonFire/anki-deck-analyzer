@@ -96,9 +96,9 @@ pip install ".[lemma]"
 
 If PowerShell refuses to run `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once and try again.
 
-That gives you an `anki-deck-analyzer` command whenever the environment is active. The `[lemma]` part counts words by dictionary form, so *suis*, *es* and *sommes* are one verb rather than three new words; without it every spelling counts separately. For Korean decks, install `".[lemma,korean]"` instead, which adds Kiwi (about 150 MB). To add Kiwi to the launchers' setup, run `.venv\Scripts\pip install kiwipiepy` (Windows) or `.venv/bin/pip install kiwipiepy` (macOS) in this folder once.
+That gives you an `anki-deck-analyzer` command whenever the environment is active. The `[lemma]` part counts words by dictionary form, so *suis*, *es* and *sommes* are one verb rather than three new words; without it every spelling counts separately.
 
-Chinese and Japanese decks need a word splitter: jieba and Janome, which the launchers install for you. With a manual install, use `".[lemma,chinese]"` or `".[lemma,japanese]"`. Without one, those decks get no frequency table, the report says so, and their new-word curve falls back to counting characters.
+Korean, Chinese and Japanese decks need a word splitter: Kiwi (about 200 MB), jieba (45 MB) or Janome (270 MB). They aren't part of the standard setup, because most people never need them. When you run a deck in one of those languages, the tool asks once whether to install its splitter, then carries on. That works with the launchers and with a manual install. To install one ahead of time, use `".[lemma,korean]"`, `".[lemma,chinese]"` or `".[lemma,japanese]"`. An automated run never installs anything by itself. Without a splitter, Chinese and Japanese decks get no frequency table, the report says so, and their new-word curve falls back to counting characters.
 
 Then set your key for the session:
 
